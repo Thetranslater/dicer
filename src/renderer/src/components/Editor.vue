@@ -12,11 +12,11 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import { setupMenuListeners, OpenFileService } from '../utils/fileService'
+import { OpenFileService, OpenFileOptions } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
 
-import type { AfterReadCallbackDetails } from '../utils/fileService'
+import type { OpenFileDetails } from '../utils/fileService'
 
 const { setEditor } = useEditorStore()
 
@@ -60,14 +60,10 @@ const editor = useEditor({
 })
 
 
-// 设置菜单事件监听
 onMounted(() => {
-  // 设置菜单事件监听
-  setupMenuListeners()
-
-  OpenFileService.AfterReadListeners.push((filePath: string | string[], content?: string | string[], details?: AfterReadCallbackDetails) => {
+  OpenFileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
     if (!editor.value) return
-    if (details?.isMultiSelection || details?.source !== 'menu-openfile') return
+    if (details?.broadcastInfo !== 'menu-openfile') return
     if (content) {
       const ext = (filePath as string).split('.').pop()?.toLowerCase()
       if (ext === 'json') {
@@ -83,12 +79,13 @@ onMounted(() => {
         currentFilePath.value = filePath as string
       }
     }
+    //dev log
+    console.log(details.dev)
   })
 
-  // 监听图片打开
-  OpenFileService.AfterReadListeners.push((filePath: string | string[], content?: string | string[], details?: AfterReadCallbackDetails) => {
+  OpenFileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
     if (!editor.value) return
-    if (details?.source !== 'editor') return
+    if (details?.broadcastInfo !== 'editor-insertimage') return
 
     const imagePath = `app://${filePath}`
     editor.value.chain().focus().setImage({ src: imagePath }).run()
@@ -148,7 +145,17 @@ const insertDetails = () => {
 
 const insertImage = () => {
   // 调用主进程打开图片对话框
-  window.api.openImage('editor')
+  const options: OpenFileOptions = {
+    behavior: 'path',
+    isMultiselection: true,
+    broadcastInfo: 'editor-insertimage',
+    dialogProperties: ['openFile'],
+    dev: {
+      source: 'Editor.vue-insertImage',
+      message: '编辑器插入图像'
+    }
+  }
+  window.api.openFileSignal(options)
 }
 
 const handleFontFamilyChange = (e: Event) => {

@@ -1,6 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { AfterReadCallbackDetails } from '../renderer/src/utils/fileService'
+import { OpenFileDetails, OpenFileOptions } from '../renderer/src/utils/fileService'
 
 type ImageManagerConfig = {
   rootPath: string | null
@@ -10,8 +10,6 @@ type ImageItem = {
   name: string
   path: string
   isDirectory: boolean
-  createdTime: number
-  modifiedTime: number
   size: number
 }
 
@@ -23,17 +21,17 @@ type ImageDirResult = {
 
 // Custom APIs for renderer
 const api = {
-  // Save file
+  // core
   saveFileSignal: (callback: () => void) => {
     ipcRenderer.on('menu-file-save', () => callback())
   },
   saveFileImpl: (content: string, defaultPath?: string, filters?: { name: string; extensions: string[] }[]) =>
     ipcRenderer.invoke('save-file', content, defaultPath, filters),
 
-  // Open file
-  openFileSignal: (callback: (filePath: string | string[], content?: string | string[], details?: AfterReadCallbackDetails) => void) => {
-    ipcRenderer.on('menu-file-open', (_event, filePath, content, details) => callback(filePath, content, details))
+  openFileChannel: (callback: (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => void) => {
+    ipcRenderer.on('sys:openfilec', (_event, filePath, content, details) => callback(filePath, content, details))
   },
+  openFileSignal: (options?: OpenFileOptions) => ipcRenderer.send('sys:openfile', options),
 
   // Image manager module (module:function)
   imagesGetConfig: (): Promise<ImageManagerConfig> => ipcRenderer.invoke('images:get-config'),

@@ -24,8 +24,6 @@ type ImageItem = {
   name: string
   path: string
   isDirectory: boolean
-  createdTime: number
-  modifiedTime: number
   size: number
 }
 
@@ -101,22 +99,25 @@ async function toImageItems(directoryPath: string): Promise<ImageItem[]> {
   const entries = await readdir(directoryPath, { withFileTypes: true })
   const rawItems = await Promise.all(
     entries.map(async (entry) => {
-      const fullPath = join(directoryPath, entry.name)
-      const stats = await stat(fullPath)
-      const extension = extname(entry.name).toLowerCase()
+      try {
+        const fullPath = join(directoryPath, entry.name)
+        const stats = await stat(fullPath)
+        const extension = extname(entry.name).toLowerCase()
 
-      if (!entry.isDirectory() && !IMAGE_EXTENSIONS.has(extension)) {
+        if (!entry.isDirectory() && !IMAGE_EXTENSIONS.has(extension)) {
+          return null
+        }
+
+        return {
+          name: entry.name,
+          path: fullPath,
+          isDirectory: entry.isDirectory(),
+          size: stats.size
+        } satisfies ImageItem
+      } catch {
+        // Skip entries that cannot be stat-ed (for example, protected system files).
         return null
       }
-
-      return {
-        name: entry.name,
-        path: fullPath,
-        isDirectory: entry.isDirectory(),
-        createdTime: stats.birthtimeMs,
-        modifiedTime: stats.mtimeMs,
-        size: stats.size
-      } satisfies ImageItem
     })
   )
 
@@ -138,10 +139,9 @@ async function getUniquePath(targetDir: string, fileName: string): Promise<strin
 }
 
 async function importImages(targetDirectory: string, sourceFilePaths: string[]): Promise<string[]> {
-  const rootPath = await requireRootPath()
   const resolvedTarget = resolve(targetDirectory)
-  if (!isPathWithinRoot(rootPath, resolvedTarget)) {
-    throw new Error('Target directory is outside image root')
+  if (!existsSync(resolvedTarget)) {
+    throw new Error('Target directory does not exist')
   }
 
   const imported: string[] = []
@@ -182,7 +182,7 @@ export function registerImageManagerIpcHandlers(): void {
   ipcMain.handle('images:list-dir', async (_event, directoryPath?: string) => {
     const rootPath = await requireRootPath()
     const requestedPath = directoryPath ? resolve(directoryPath) : rootPath
-    const currentPath = isPathWithinRoot(rootPath, requestedPath) ? requestedPath : rootPath
+    const currentPath = existsSync(requestedPath) ? requestedPath : rootPath
     const items = await toImageItems(currentPath)
 
     return {
@@ -193,10 +193,10 @@ export function registerImageManagerIpcHandlers(): void {
   })
 
   ipcMain.handle('images:create-folder', async (_event, parentPath: string, folderName?: string) => {
-    const rootPath = await requireRootPath()
+    await requireRootPath()
     const resolvedParent = resolve(parentPath)
-    if (!isPathWithinRoot(rootPath, resolvedParent)) {
-      throw new Error('Target directory is outside image root')
+    if (!existsSync(resolvedParent)) {
+      throw new Error('Target directory does not exist')
     }
 
     if (folderName && folderName.trim()) {
@@ -210,30 +210,30 @@ export function registerImageManagerIpcHandlers(): void {
   })
 
   ipcMain.handle('images:rename', async (_event, targetPath: string, nextName: string) => {
-    const rootPath = await requireRootPath()
+    await requireRootPath()
     const resolvedTarget = resolve(targetPath)
-    if (!isPathWithinRoot(rootPath, resolvedTarget)) {
-      throw new Error('Target path is outside image root')
+    if (!existsSync(resolvedTarget)) {
+      throw new Error('Target path does not exist')
     }
 
     const safeName = sanitizeName(nextName)
     const targetDir = dirname(resolvedTarget)
     const nextPath = resolve(join(targetDir, safeName))
-    if (!isPathWithinRoot(rootPath, nextPath)) {
-      throw new Error('Renamed path is outside image root')
-    }
 
     await rename(resolvedTarget, nextPath)
     return nextPath
   })
 
   ipcMain.handle('images:move', async (_event, sourcePath: string, targetDirectory: string) => {
-    const rootPath = await requireRootPath()
+    await requireRootPath()
     const resolvedSource = resolve(sourcePath)
     const resolvedTargetDir = resolve(targetDirectory)
 
-    if (!isPathWithinRoot(rootPath, resolvedSource) || !isPathWithinRoot(rootPath, resolvedTargetDir)) {
-      throw new Error('Move path is outside image root')
+    if (!existsSync(resolvedSource)) {
+      throw new Error('Source path does not exist')
+    }
+    if (!existsSync(resolvedTargetDir)) {
+      throw new Error('Target directory does not exist')
     }
 
     const sourceStats = await stat(resolvedSource)

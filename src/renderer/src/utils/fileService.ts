@@ -11,22 +11,42 @@ const editorContentRequire = () => {
 
 window.api.saveFileSignal(editorContentRequire)
 
-//OpenFile
-export type AfterReadCallbackDetails = {
-  isMultiSelection? : Boolean
-  source? : string
+export type FSNode = {
+  name: string
+  children?: FSNode[]
 }
-export type AfterReadCallback = (filePath: string | string[], content?: string | string[], details? : AfterReadCallbackDetails) => void
+
+//OpenFile
+export type OpenFileOptions = {
+  path?: string[]
+  behavior?: 'path' | 'content'
+  isMultiselection?: Boolean
+  broadcastInfo?: string
+  dialogfilters?: {name: string, extensions: string[]}[]
+  dialogProperties?: ("openFile" | "openDirectory" | "multiSelections" | "showHiddenFiles" | "createDirectory" | "promptToCreate" | "noResolveAliases" | "treatPackageAsDirectory" | "dontAddToRecent")[]
+  dev?:{
+    source?: string
+    message?: string
+  }
+}
+export type OpenFileDetails = {
+  broadcastInfo?: string
+  dev?: {
+    source?: string
+    message?: string
+  }
+}
+export type OpenFileCallback = (filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => void
 
 export class OpenFileService{
-  public static readonly AfterReadListeners: AfterReadCallback[] = []
-  public static emitAfterRead(filePath: string | string[], content?: string | string[], details? : AfterReadCallbackDetails) {
-    this.AfterReadListeners.forEach(callback => callback(filePath, content, details))
+  public static readonly OpenFileListeners: OpenFileCallback[] = []
+  public static emitAfterRead(filePath: string | string[], content?: string | string[], details? : OpenFileDetails) {
+    this.OpenFileListeners.forEach(callback => callback(filePath, content, details))
   }
 }
 
 export const setupMenuListeners = () => {
-  window.api.openFileSignal((filePath: string | string[], content?: string | string[], details? : AfterReadCallbackDetails) => {
+  window.api.openFileChannel((filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => {
     OpenFileService.emitAfterRead(filePath, content, details)
   })
 }

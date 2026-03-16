@@ -1,15 +1,13 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
-type SortType = 'name' | 'time'
-
 type ImageItem = {
   name: string
   path: string
   isDirectory: boolean
-  createdTime: number
-  modifiedTime: number
   size: number
+  isParentNav?: boolean
+  targetPath?: string
 }
 
 type Breadcrumb = {
@@ -17,12 +15,13 @@ type Breadcrumb = {
   path: string
 }
 
-const sortType = ref<SortType>('name')
+const VIRTUAL_PARENT_PATH = '__virtual_parent__'
 const rootPath = ref<string | null>(null)
 const currentPath = ref<string>('')
 const items = ref<ImageItem[]>([])
 const selectedPath = ref<string | null>(null)
 const dropTargetPath = ref<string | null>(null)
+const dragEnterDepthMap = new Map<string, number>()
 const renamingPath = ref<string | null>(null)
 const renamingName = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
@@ -32,17 +31,27 @@ const errorMessage = ref('')
 const statusMessage = ref('')
 
 const hasRoot = computed(() => Boolean(rootPath.value))
+const parentPath = computed(() => getParentPath(currentPath.value))
 
 const sortedItems = computed(() => {
   const list = [...items.value]
   list.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
-    if (sortType.value === 'time') {
-      const diff = b.createdTime - a.createdTime
-      if (diff !== 0) return diff
-    }
     return a.name.localeCompare(b.name, 'en-US')
   })
+
+  if (parentPath.value) {
+    const parentItem: ImageItem = {
+      name: '..',
+      path: VIRTUAL_PARENT_PATH,
+      isDirectory: true,
+      size: 0,
+      isParentNav: true,
+      targetPath: parentPath.value
+    }
+    return [parentItem, ...list]
+  }
+
   return list
 })
 
@@ -59,15 +68,44 @@ function logSelectionDebug(source: string): void {
     selectedPath: selectedPath.value,
     selected: selected
       ? {
-          name: selected.name,
-          path: selected.path,
-          isDirectory: selected.isDirectory,
-          createdTime: selected.createdTime,
-          modifiedTime: selected.modifiedTime,
-          size: selected.size
-        }
+        name: selected.name,
+        path: selected.path,
+        isDirectory: selected.isDirectory,
+        size: selected.size
+      }
       : null
   })
+}
+
+function getStateSnapshot() {
+  return {
+    rootPath: rootPath.value,
+    currentPath: currentPath.value,
+    hasRoot: hasRoot.value,
+    loading: loading.value,
+    errorMessage: errorMessage.value,
+    statusMessage: statusMessage.value,
+    selectedPath: selectedPath.value,
+    selectedItem: selectedItem.value
+      ? {
+        name: selectedItem.value.name,
+        path: selectedItem.value.path,
+        isDirectory: selectedItem.value.isDirectory,
+        size: selectedItem.value.size
+      }
+      : null,
+    itemsCount: items.value.length,
+    renamingPath: renamingPath.value,
+    dropTargetPath: dropTargetPath.value
+  }
+}
+
+function logStateChange(key: string, prev: unknown, next: unknown): void {
+  console.groupCollapsed(`[ImagesManager][StateChange] ${key}`)
+  console.log('prev:', prev)
+  console.log('next:', next)
+  console.log('snapshot:', getStateSnapshot())
+  console.groupEnd()
 }
 
 const breadcrumbs = computed<Breadcrumb[]>(() => {
@@ -91,10 +129,28 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
   return result
 })
 
-const canGoUp = computed(() => breadcrumbs.value.length > 1)
+const canGoUp = computed(() => Boolean(parentPath.value))
 
 function normalizePath(path: string): string {
   return path.replace(/\\/g, '/')
+}
+
+function getParentPath(path: string): string | null {
+  const normalized = normalizePath(path).replace(/\/+$/, '')
+  if (!normalized) return null
+  if (/^[A-Za-z]:$/.test(normalized)) return null
+
+  const idx = normalized.lastIndexOf('/')
+  if (idx < 0) return null
+
+  // Keep drive root as "D:/" instead of "D:".
+  // "D:" may resolve to drive working directory on Windows.
+  if (idx === 2 && /^[A-Za-z]:\//.test(normalized)) {
+    return normalized.slice(0, 3)
+  }
+
+  const parent = normalized.slice(0, idx)
+  return parent || null
 }
 
 function displayNameForPath(path: string): string {
@@ -106,11 +162,6 @@ function displayNameForPath(path: string): string {
 
 function toImageSrc(path: string): string {
   return `app://${encodeURI(normalizePath(path))}`
-}
-
-function formatTime(timestamp: number): string {
-  if (!timestamp) return ''
-  return new Date(timestamp).toLocaleString()
 }
 
 function toErrorMessage(error: unknown): string {
@@ -131,7 +182,6 @@ async function loadDirectory(path?: string): Promise<void> {
     currentPath.value = result.currentPath
     items.value = result.items
     selectedPath.value = null
-    logSelectionDebug('load-directory')
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -146,10 +196,9 @@ async function chooseRootDirectory(): Promise<void> {
   try {
     const selected = await window.api.imagesSelectRoot()
     if (!selected) {
-      rootPath.value = null
-      currentPath.value = ''
-      items.value = []
-      statusMessage.value = 'No image root selected.'
+      statusMessage.value = rootPath.value
+        ? 'Root selection cancelled. Keeping current root.'
+        : 'No image root selected.'
       return
     }
     await loadDirectory(selected)
@@ -189,13 +238,18 @@ async function goToBreadcrumb(path: string): Promise<void> {
 }
 
 async function goUp(): Promise<void> {
-  if (!canGoUp.value) return
-  const parent = breadcrumbs.value[breadcrumbs.value.length - 2]
-  if (parent) await loadDirectory(parent.path)
+  if (!parentPath.value) return
+  await loadDirectory(parentPath.value)
 }
 
 async function openItem(item: ImageItem): Promise<void> {
   if (renamingPath.value) return
+
+  if (item.isParentNav && item.targetPath) {
+    await loadDirectory(item.targetPath)
+    return
+  }
+
   selectedPath.value = item.path
   logSelectionDebug('open-item')
   if (item.isDirectory) {
@@ -301,7 +355,7 @@ async function importByDialog(): Promise<void> {
 }
 
 function onItemDragStart(event: DragEvent, item: ImageItem): void {
-  if (renamingPath.value === item.path) {
+  if (item.isParentNav || renamingPath.value === item.path) {
     event.preventDefault()
     return
   }
@@ -310,22 +364,54 @@ function onItemDragStart(event: DragEvent, item: ImageItem): void {
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 
-function onItemDragOver(event: DragEvent, item: ImageItem): void {
-  if (!item.isDirectory) return
+function getDropTargetDir(item: ImageItem): string | null {
+  if (item.isParentNav) return item.targetPath || null
+  if (item.isDirectory) return item.path
+  return null
+}
+
+function onItemDragEnter(event: DragEvent, item: ImageItem): void {
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
   event.preventDefault()
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+
+  const nextDepth = (dragEnterDepthMap.get(item.path) || 0) + 1
+  dragEnterDepthMap.set(item.path, nextDepth)
   dropTargetPath.value = item.path
 }
 
-function onItemDragLeave(item: ImageItem): void {
-  if (dropTargetPath.value === item.path) dropTargetPath.value = null
+function onItemDragOver(event: DragEvent, item: ImageItem): void {
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+
+function onItemDragLeave(event: DragEvent, item: ImageItem): void {
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
+  event.preventDefault()
+
+  const nextDepth = (dragEnterDepthMap.get(item.path) || 1) - 1
+  if (nextDepth <= 0) {
+    dragEnterDepthMap.delete(item.path)
+    if (dropTargetPath.value === item.path) {
+      dropTargetPath.value = null
+    }
+    return
+  }
+
+  dragEnterDepthMap.set(item.path, nextDepth)
 }
 
 async function onItemDrop(event: DragEvent, item: ImageItem): Promise<void> {
-  if (!item.isDirectory) return
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
   event.preventDefault()
+  dragEnterDepthMap.delete(item.path)
   dropTargetPath.value = null
-  await handleDrop(event, item.path)
+  await handleDrop(event, dropDir)
 }
 
 function onWorkspaceDragOver(event: DragEvent): void {
@@ -335,6 +421,7 @@ function onWorkspaceDragOver(event: DragEvent): void {
 
 async function onWorkspaceDrop(event: DragEvent): Promise<void> {
   event.preventDefault()
+  dragEnterDepthMap.clear()
   dropTargetPath.value = null
   await handleDrop(event, currentPath.value)
 }
@@ -381,16 +468,44 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown)
 })
 
-watch(selectedPath, () => {
-  logSelectionDebug('selectedPath-change')
-})
+// watch(rootPath, (next, prev) => {
+//   logStateChange('rootPath', prev, next)
+// })
 
-watch(items, () => {
-  logSelectionDebug('items-change')
-}, { deep: false })
+// watch(currentPath, (next, prev) => {
+//   logStateChange('currentPath', prev, next)
+// })
 
-watch(currentPath, () => {
-  logSelectionDebug('currentPath-change')
+// watch(loading, (next, prev) => {
+//   logStateChange('loading', prev, next)
+// })
+
+// watch(errorMessage, (next, prev) => {
+//   logStateChange('errorMessage', prev, next)
+// })
+
+// watch(statusMessage, (next, prev) => {
+//   logStateChange('statusMessage', prev, next)
+// })
+
+// watch(selectedPath, (next, prev) => {
+//   logStateChange('selectedPath', prev, next)
+// })
+
+// watch(items, (next, prev) => {
+//   const prevSummary = Array.isArray(prev)
+//     ? prev.map((item) => ({ name: item.name, path: item.path, isDirectory: item.isDirectory }))
+//     : []
+//   const nextSummary = next.map((item) => ({ name: item.name, path: item.path, isDirectory: item.isDirectory }))
+//   logStateChange('items', prevSummary, nextSummary)
+// }, { deep: false })
+
+// watch(renamingPath, (next, prev) => {
+//   logStateChange('renamingPath', prev, next)
+// })
+
+watch(dropTargetPath, (next, prev) => {
+  logStateChange('dropTargetPath', prev, next)
 })
 </script>
 
@@ -404,13 +519,8 @@ watch(currentPath, () => {
       </div>
 
       <div class="toolbar-center" v-if="hasRoot">
-        <button
-          v-for="crumb in breadcrumbs"
-          :key="crumb.path"
-          class="breadcrumb"
-          @click="goToBreadcrumb(crumb.path)"
-          :disabled="loading"
-        >
+        <button v-for="crumb in breadcrumbs" :key="crumb.path" class="breadcrumb" @click="goToBreadcrumb(crumb.path)"
+          :disabled="loading">
           {{ crumb.name }}
         </button>
       </div>
@@ -419,20 +529,10 @@ watch(currentPath, () => {
       </div>
 
       <div class="toolbar-right">
-        <select v-model="sortType" :disabled="loading || !hasRoot">
-          <option value="name">Sort by Name</option>
-          <option value="time">Sort by Created Time</option>
-        </select>
         <button @click="importByDialog" :disabled="loading || !hasRoot">Import Images</button>
         <button @click="createFolder" :disabled="loading || !hasRoot">New Folder</button>
         <button @click="openConfigPlaceholder" :disabled="!hasRoot">Image Config</button>
       </div>
-    </div>
-
-    <div class="message-row">
-      <span v-if="loading" class="loading">Processing...</span>
-      <span v-if="statusMessage" class="status">{{ statusMessage }}</span>
-      <span v-if="errorMessage" class="error">{{ errorMessage }}</span>
     </div>
 
     <div class="content" v-if="hasRoot">
@@ -441,22 +541,13 @@ watch(currentPath, () => {
       </div>
 
       <div v-else class="item-grid">
-        <div
-          v-for="item in sortedItems"
-          :key="item.path"
-          class="item-card"
-          :class="{
-            selected: selectedPath === item.path,
-            'drop-target': dropTargetPath === item.path
-          }"
-          :draggable="renamingPath !== item.path"
-          @click="selectedPath = item.path; logSelectionDebug('item-click')"
-          @dblclick="openItem(item)"
-          @dragstart="onItemDragStart($event, item)"
-          @dragover="onItemDragOver($event, item)"
-          @dragleave="onItemDragLeave(item)"
-          @drop="onItemDrop($event, item)"
-        >
+        <div v-for="item in sortedItems" :key="item.path" class="item-card" :class="{
+          selected: selectedPath === item.path,
+          'drop-target': dropTargetPath === item.path
+        }" :draggable="renamingPath !== item.path && !item.isParentNav" @click="selectedPath = item.path"
+          @dblclick="openItem(item)" @dragstart="onItemDragStart($event, item)" @dragenter="onItemDragEnter($event, item)"
+          @dragover="onItemDragOver($event, item)" @dragleave="onItemDragLeave($event, item)"
+          @drop="onItemDrop($event, item)">
           <div class="thumb">
             <template v-if="item.isDirectory">
               <div class="folder-icon">DIR</div>
@@ -467,19 +558,10 @@ watch(currentPath, () => {
           </div>
 
           <template v-if="renamingPath === item.path">
-            <input
-              :ref="setRenameInputRef"
-              v-model="renamingName"
-              class="rename-input"
-              @click.stop
-              @dblclick.stop
-              @keydown="onRenameInputKeydown"
-              @blur="commitRename"
-            />
+            <input :ref="setRenameInputRef" v-model="renamingName" class="rename-input" @click.stop @dblclick.stop
+              @keydown="onRenameInputKeydown" @blur="commitRename" />
           </template>
           <div v-else class="name" :title="item.name">{{ item.name }}</div>
-
-          <div class="meta">{{ formatTime(item.createdTime) }}</div>
         </div>
       </div>
     </div>
@@ -559,28 +641,6 @@ watch(currentPath, () => {
 .path-hint {
   color: #656d76;
   font-size: 13px;
-}
-
-.message-row {
-  min-height: 28px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 4px 12px;
-  border-bottom: 1px solid #eaeef2;
-  font-size: 12px;
-}
-
-.loading {
-  color: #0969da;
-}
-
-.status {
-  color: #1a7f37;
-}
-
-.error {
-  color: #cf222e;
 }
 
 .content {
@@ -663,11 +723,6 @@ watch(currentPath, () => {
   padding: 0 8px;
   font-size: 13px;
   outline: none;
-}
-
-.meta {
-  font-size: 11px;
-  color: #656d76;
 }
 
 .empty-state {

@@ -1,14 +1,13 @@
 import { app, shell, BrowserWindow, ipcMain, dialog, Menu, protocol } from 'electron'
-import { join, dirname } from 'path'
+import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { net } from 'electron'
 import { URL } from 'url'
-import { pathToFileURL } from 'url'
 
-import { windowManager, WindowType } from './windowManager'
-import type {AfterReadCallbackDetails} from '../renderer/src/utils/fileService'
+import { windowManager} from './windowManager'
+import {openFile, registerCoreIpcHandlers} from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 
 //任何代码更新都应在下方，不应插入在上�?
@@ -123,28 +122,25 @@ function createWindow(): void {
           label: '打开...',
           accelerator: 'CmdOrCtrl+O',
           click: async () => {
-            const result = await dialog.showOpenDialog(mainWindow, {
-              filters: [
-                { name: '支持的', extensions: ['json', 'html', 'htm'] },
-                { name: 'JSON 文件', extensions: ['json'] },
-                { name: 'HTML 文件', extensions: ['html', 'htm'] }
-              ],
-              properties: ['openFile']
-            })
-            if (!result.canceled && result.filePaths.length > 0) {
               try{
-                const details : AfterReadCallbackDetails = {
-                  isMultiSelection : false,
-                  source : 'menu-openfile'
-                }
-                const filePath = result.filePaths[0]
-                const content = readFileSync(filePath,'utf-8')
-                mainWindow.webContents.send('menu-file-open', filePath, content, details)
+                const result = await openFile({
+                  behavior: 'content',
+                  isMultiselection: false,
+                  broadcastInfo: 'menu-openfile',
+                  dialogfilters: [{name: 'HTML',extensions: ['html', 'htm']}, {name:'JSON', extensions:['json']}],
+                  dialogProperties: ['openFile'],
+                  dev :{
+                    source: 'menu-open-click',
+                    message: '由菜单点击打开选项触发'
+                  }
+                })  
+                const filePath = result[0]
+                const content = result[1]
+                mainWindow.webContents.send('sys:openfilec', filePath[0], content[0], result[2])
               }
               catch (error){
                 console.error('Error read file:', error)
               }
-            }
           }
         },
         { type: 'separator' },
@@ -156,7 +152,7 @@ function createWindow(): void {
           }
         },
         {
-          label: '另存�?..',
+          label: '另存为..',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {
             mainWindow.webContents.send('menu-file-saveas')
@@ -213,6 +209,7 @@ app.whenReady().then(() => {
   // 注册本地文件协议
   registerLocalProtocol()
   registerImageManagerIpcHandlers()
+  registerCoreIpcHandlers()
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
