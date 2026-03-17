@@ -1,7 +1,8 @@
 import { dialog, ipcMain } from 'electron'
 import { readFileSync, statSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
-import { OpenFileOptions, OpenFileDetails, FSNode } from '../includes/fileService'
+import type { OpenFileOptions, OpenFileDetails, FSNode } from '../includes/fileService'
+import assert from 'assert'
 
 function buildDirectoryNode(directoryPath: string): FSNode {
   const children: FSNode[] = []
@@ -29,7 +30,7 @@ function buildDirectoryNode(directoryPath: string): FSNode {
   }
 }
 
-export async function openFile(options?: OpenFileOptions): Promise<[string[], any[], OpenFileDetails]> {
+export async function openFile(options?: OpenFileOptions): Promise<[string | string[], any, OpenFileDetails]> {
   let path: string[] = []
   let content: any[] = []
   let details: OpenFileDetails = {}
@@ -57,7 +58,10 @@ export async function openFile(options?: OpenFileOptions): Promise<[string[], an
         ...(options?.isMultiselection ? (['multiSelections'] as const) : [])
       ]) : options.dialogProperties
     })
-    if(selected.canceled) details.dev.message += 'dialog canceled; '
+    if(selected.canceled) {
+      details.isDialogCanceled = true
+      details.dev.message += 'dialog canceled; '
+    }
     path = selected.filePaths ?? []
   } else {
     path = options.path
@@ -69,6 +73,7 @@ export async function openFile(options?: OpenFileOptions): Promise<[string[], an
     if (entryStat.isFile()) {
       if (options?.behavior === 'path') {
         // Keep path only and do not read file content.
+        content.push(null)
       } else {
         const fileContent = readFileSync(value, 'utf-8')
         content.push(fileContent)
@@ -80,21 +85,22 @@ export async function openFile(options?: OpenFileOptions): Promise<[string[], an
       if (options?.behavior === 'content') {
         const directoryNode = buildDirectoryNode(value)
         content.push(directoryNode)
-      }
-      if(options?.behavior === undefined){
+      } else {
         content.push(null)
       }
     }
   })
 
-  return [path, content, details]
+  assert.ok(path.length === content.length, 'path长度和content长度不一致')
+
+  const rpath = path.length === 1 ? path[0] : path
+  const rcontent = content.length === 1 ? content[0] : content
+  return [rpath, rcontent, details]
 }
 
 export function registerCoreIpcHandlers() : void {
     ipcMain.on('sys:openfile', async (event, options)=>{
         const result = await openFile(options)
-        const path = result[0].length === 1 ? result[0][0] : result[0]
-        const content = result[1].length === 1 ? result[1][0] : result[1]
-        event.reply('sys:openfilec', path, content, result[2])
+        event.reply('sys:openfilec', result[0], result[1], result[2])
     })
 }

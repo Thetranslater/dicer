@@ -18,9 +18,8 @@ import Dicer from './Dicer.vue'
 
 const { setEditor } = useEditorStore()
 
-// 当前文件路径
+//#region 'var set'
 const currentFilePath = ref<string | null>(null)
-
 const editor = useEditor({
   extensions: [
     StarterKit,
@@ -56,13 +55,41 @@ const editor = useEditor({
   ],
   content: '<p>欢迎使用安科编辑器...</p>',
 })
+const fontFamilies = [
+  { label: '默认', value: 'default' },
+  { label: '宋体', value: 'SimSun' },
+  { label: '黑体', value: 'SimHei' },
+  { label: '微软雅黑', value: 'Microsoft YaHei' },
+  { label: '楷体', value: 'KaiTi' },
+  { label: '仿宋', value: 'FangSong' },
+  { label: 'Arial', value: 'Arial' },
+  { label: 'Times New Roman', value: 'Times New Roman' },
+  { label: 'Courier New', value: 'Courier New' }
+]
+const fontSizes = [
+  { label: '12px', value: '12px' },
+  { label: '14px', value: '14px' },
+  { label: '16px', value: '16px' },
+  { label: '18px', value: '18px' },
+  { label: '20px', value: '20px' },
+  { label: '24px', value: '24px' },
+  { label: '28px', value: '28px' },
+  { label: '32px', value: '32px' },
+  { label: '36px', value: '36px' },
+  { label: '48px', value: '48px' }
+]
+const colors = Array.from({ length: 24 }, (_, i) => ({
+  label: `颜色${i + 1}`,
+  value: '#FF0000'
+}))
+//#endregion
 
-
-onMounted(() => {
-  //content insertion handler
-  FileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
+//#region 'Ipc Callbacks'
+function IpcCallbackRegister() {
+  FileService.OpenFileListeners.set('editor-opencontent', (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
+    console.log("reply1")
     if (!editor.value) return
-    if (details?.broadcastInfo !== 'menu-openfile') return
+    if (details?.broadcastInfo !== 'menu-openfile' || details?.isDialogCanceled) return
     if (content) {
       const ext = (filePath as string).split('.').pop()?.toLowerCase()
       if (ext === 'json') {
@@ -83,55 +110,31 @@ onMounted(() => {
   })
 
   //image insertion handler
-  FileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
+  FileService.OpenFileListeners.set('editor-openimage', (filePath: string | string[], _content, details?: OpenFileDetails) => {
+    console.log('reply2')
     if (!editor.value) return
-    if (details?.broadcastInfo !== 'editor-insertimage') return
+    if (details?.broadcastInfo !== 'editor-insertimage' || details?.isDialogCanceled) return
 
     const imagePath = `app://${filePath}`
     editor.value.chain().focus().setImage({ src: imagePath }).run()
   })
 
   //saving signal from mainprocess
-  FileService.SaveFileListeners.push((details?: SaveFileDetails) => {
+  FileService.SaveFileListeners.set('editor-savecontent', (details?: SaveFileDetails) => {
     if (!editor.value) return
     if (details?.broadcastInfo !== 'menu-savefile') return
 
     const content = editor.value.getHTML()
     if (content !== null) window.api.saveFileSignal(content, undefined, [{ name: 'HTML', extensions: ['html'] }])
   })
+}
+//#endregion
+
+onMounted(() => {
+  IpcCallbackRegister()
 })
 
-const fontFamilies = [
-  { label: '默认', value: 'default' },
-  { label: '宋体', value: 'SimSun' },
-  { label: '黑体', value: 'SimHei' },
-  { label: '微软雅黑', value: 'Microsoft YaHei' },
-  { label: '楷体', value: 'KaiTi' },
-  { label: '仿宋', value: 'FangSong' },
-  { label: 'Arial', value: 'Arial' },
-  { label: 'Times New Roman', value: 'Times New Roman' },
-  { label: 'Courier New', value: 'Courier New' }
-]
-
-const fontSizes = [
-  { label: '12px', value: '12px' },
-  { label: '14px', value: '14px' },
-  { label: '16px', value: '16px' },
-  { label: '18px', value: '18px' },
-  { label: '20px', value: '20px' },
-  { label: '24px', value: '24px' },
-  { label: '28px', value: '28px' },
-  { label: '32px', value: '32px' },
-  { label: '36px', value: '36px' },
-  { label: '48px', value: '48px' }
-]
-
-// 24种颜色（目前用统一颜色占位）
-const colors = Array.from({ length: 24 }, (_, i) => ({
-  label: `颜色${i + 1}`,
-  value: '#FF0000'
-}))
-
+//#region 'basic function': bold, italic, font....
 const currentFontFamily = computed(() => {
   return editor.value?.getAttributes('textStyle').fontFamily || 'default'
 })
@@ -143,29 +146,6 @@ const currentFontSize = computed(() => {
 const currentColor = computed(() => {
   return editor.value?.getAttributes('textStyle').color || ''
 })
-
-const insertTable = () => {
-  editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
-}
-
-const insertDetails = () => {
-  editor.value?.chain().focus().setDetails().run()
-}
-
-const insertImage = () => {
-  // 调用主进程打开图片对话框
-  const options: OpenFileOptions = {
-    behavior: 'path',
-    isMultiselection: true,
-    broadcastInfo: 'editor-insertimage',
-    dialogProperties: ['openFile'],
-    dev: {
-      source: 'Editor.vue-insertImage',
-      message: '编辑器插入图像'
-    }
-  }
-  window.api.openFileSignal(options)
-}
 
 const handleFontFamilyChange = (e: Event) => {
   const value = (e.target as HTMLSelectElement).value
@@ -207,6 +187,29 @@ const toggleBoldHandler = (event: MouseEvent) => {
   handleFormatButton(event, () => {
     editor.value?.chain().focus().toggleBold().run()
   })
+}
+//#endregion
+
+
+const insertTable = () => {
+  editor.value?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()
+}
+const insertDetails = () => {
+  editor.value?.chain().focus().setDetails().run()
+}
+const insertImage = () => {
+  // 调用主进程打开图片对话框
+  const options: OpenFileOptions = {
+    behavior: 'path',
+    isMultiselection: true,
+    broadcastInfo: 'editor-insertimage',
+    dialogProperties: ['openFile'],
+    dev: {
+      source: 'Editor.vue-insertImage',
+      message: '编辑器插入图像'
+    }
+  }
+  window.api.openFileSignal(options)
 }
 
 watch(editor, (newInstance) => {

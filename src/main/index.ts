@@ -131,10 +131,12 @@ function createWindow(): void {
                     source: 'menu-open-click',
                     message: '由菜单点击打开选项触发'
                   }
-                })  
-                const filePath = result[0]
-                const content = result[1]
-                mainWindow.webContents.send('sys:openfilec', filePath[0], content[0], result[2])
+                })
+                if (!result[2].isDialogCanceled){
+                  const filePath = result[0]
+                  const content = result[1]
+                  mainWindow.webContents.send('sys:openfilec', filePath, content, result[2])
+                }
               }
               catch (error){
                 console.error('Error read file:', error)

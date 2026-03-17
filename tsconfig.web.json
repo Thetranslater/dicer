@@ -5,7 +5,7 @@
     "src/renderer/src/**/*",
     "src/renderer/src/**/*.vue",
     "src/preload/*.d.ts",
-    "src/includes/fileService.ts"
+    "src/includes/**/*.ts"
   ],
   "compilerOptions": {
     "composite": true,

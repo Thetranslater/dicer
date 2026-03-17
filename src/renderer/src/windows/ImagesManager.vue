@@ -1,5 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { FileService, type OpenFileOptions, type OpenFileDetails } from '../../../includes/fileService'
 
 type ImageItem = {
   name: string
@@ -14,7 +15,7 @@ type Breadcrumb = {
   name: string
   path: string
 }
-
+//#region 'var set'
 const VIRTUAL_PARENT_PATH = '__virtual_parent__'
 const rootPath = ref<string | null>(null)
 const currentPath = ref<string>('')
@@ -29,6 +30,43 @@ const renameInputRef = ref<HTMLInputElement | null>(null)
 const loading = ref(false)
 const errorMessage = ref('')
 const statusMessage = ref('')
+//#endregion
+
+//#region 'Ipc callbacks'
+function IpcCallbackRegister() {
+  FileService.OpenFileListeners.set('imgmanager-chooseroot', async (filePath: string | string[], _content, details?: OpenFileDetails) => {
+    console.log('reply3')
+    if (details?.broadcastInfo !== 'imgmanager-chooseroot' || details?.isDialogCanceled) return
+    try {
+      await loadDirectory(filePath as string)
+      statusMessage.value = 'Image root has been set.'
+    } catch (error) {
+      errorMessage.value = toErrorMessage(error)
+    } finally {
+      loading.value = false
+    }
+  })
+}
+//#endregion
+
+//#region 'basic function'
+async function chooseRootDirectory(): Promise<void> {
+  loading.value = true
+  errorMessage.value = ''
+  statusMessage.value = ''
+  const options: OpenFileOptions = {
+    behavior: 'path',
+    isMultiselection: false,
+    broadcastInfo: 'imgmanager-chooseroot',
+    dialogProperties: ['openDirectory', 'createDirectory'],
+    dev: {
+      source: 'imagemanager-chooseRootDirectory',
+      message: 'ImgManager选择根目录功能'
+    }
+  }
+  window.api.openFileSignal(options)
+}
+//#endregion
 
 const hasRoot = computed(() => Boolean(rootPath.value))
 const parentPath = computed(() => getParentPath(currentPath.value))
@@ -182,28 +220,6 @@ async function loadDirectory(path?: string): Promise<void> {
     currentPath.value = result.currentPath
     items.value = result.items
     selectedPath.value = null
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
-  }
-}
-
-async function chooseRootDirectory(): Promise<void> {
-  loading.value = true
-  errorMessage.value = ''
-  statusMessage.value = ''
-  try {
-    
-    const selected = await window.api.imagesSelectRoot()
-    if (!selected) {
-      statusMessage.value = rootPath.value
-        ? 'Root selection cancelled. Keeping current root.'
-        : 'No image root selected.'
-      return
-    }
-    await loadDirectory(selected)
-    statusMessage.value = 'Image root has been set.'
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -461,7 +477,9 @@ function openConfigPlaceholder(): void {
 }
 
 onMounted(() => {
+  console.log('imgmanager mounted')
   window.addEventListener('keydown', onGlobalKeydown)
+  IpcCallbackRegister()
   void initialize()
 })
 

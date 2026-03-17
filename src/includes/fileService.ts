@@ -8,7 +8,7 @@ export type SaveFileOptions = {
   broadcastInfo?:string
   dev?:{
     source?:string
-    memssage?:string
+    message?:string
   }
 }
 
@@ -37,6 +37,7 @@ export type OpenFileOptions = {
 }
 export type OpenFileDetails = {
   broadcastInfo?: string
+  isDialogCanceled?: Boolean
   dev?: {
     source?: string
     message?: string
@@ -46,13 +47,14 @@ export type OpenFileCallback = (filePath: string | string[], content?: string | 
 
 //FileService , emit all callbacks registered from renderer. Renderer using ipc to communicate to main process.
 export class FileService{
-  public static readonly OpenFileListeners: OpenFileCallback[] = []
-  public static readonly SaveFileListeners: SaveFileCallback[] = []
+  public static readonly OpenFileListeners: Map<string, OpenFileCallback> = new Map<string, OpenFileCallback>()
+  public static readonly SaveFileListeners: Map<string, SaveFileCallback> = new Map<string, SaveFileCallback>()
   public static emitAfterRead(filePath: string | string[], content?: string | string[], details? : OpenFileDetails) {
-    this.OpenFileListeners.forEach(callback => callback(filePath, content, details))
+    console.log(this.OpenFileListeners.size)
+    this.OpenFileListeners.forEach((callback, _) => callback(filePath, content, details))
   }
   public static emitBeforeSave(details? : SaveFileDetails){
-    this.SaveFileListeners.forEach(callback => callback(details))
+    this.SaveFileListeners.forEach((callback, _) => callback(details))
   }
 }
 

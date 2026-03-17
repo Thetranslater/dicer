@@ -4,8 +4,7 @@
     "electron.vite.config.*",
     "src/main/**/*",
     "src/preload/**/*",
-    "src/renderer/src/**/*",
-    "src/includes/fileService.ts"
+    "src/includes/**/*.ts"
   ],
   "compilerOptions": {
     "composite": true,
