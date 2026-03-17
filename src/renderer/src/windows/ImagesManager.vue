@@ -8,7 +8,6 @@ type ImageItem = {
   isDirectory: boolean
   size: number
   isParentNav?: boolean
-  targetPath?: string
 }
 
 type Breadcrumb = {
@@ -35,7 +34,6 @@ const statusMessage = ref('')
 //#region 'Ipc callbacks'
 function IpcCallbackRegister() {
   FileService.OpenFileListeners.set('imgmanager-chooseroot', async (filePath: string | string[], _content, details?: OpenFileDetails) => {
-    console.log('reply3')
     if (details?.broadcastInfo !== 'imgmanager-chooseroot' || details?.isDialogCanceled) return
     try {
       await loadDirectory(filePath as string)
@@ -68,9 +66,9 @@ async function chooseRootDirectory(): Promise<void> {
 }
 //#endregion
 
+//#region reactive properties
 const hasRoot = computed(() => Boolean(rootPath.value))
 const parentPath = computed(() => getParentPath(currentPath.value))
-
 const sortedItems = computed(() => {
   const list = [...items.value]
   list.sort((a, b) => {
@@ -81,22 +79,21 @@ const sortedItems = computed(() => {
   if (parentPath.value) {
     const parentItem: ImageItem = {
       name: '..',
-      path: VIRTUAL_PARENT_PATH,
+      path: parentPath.value,
       isDirectory: true,
       size: 0,
       isParentNav: true,
-      targetPath: parentPath.value
     }
     return [parentItem, ...list]
   }
 
   return list
 })
-
 const selectedItem = computed(() => {
   if (!selectedPath.value) return null
   return items.value.find((item) => item.path === selectedPath.value) || null
 })
+//#endregion
 
 function logSelectionDebug(source: string): void {
   const selected = selectedItem.value
@@ -147,21 +144,46 @@ function logStateChange(key: string, prev: unknown, next: unknown): void {
 }
 
 const breadcrumbs = computed<Breadcrumb[]>(() => {
-  if (!rootPath.value) return []
-  const root = normalizePath(rootPath.value).replace(/\/+$/, '')
-  const current = normalizePath(currentPath.value || rootPath.value).replace(/\/+$/, '')
+  const basePath = currentPath.value || rootPath.value
+  if (!basePath) return []
 
-  const rootCrumb: Breadcrumb = { name: displayNameForPath(rootPath.value), path: rootPath.value }
-  if (!current.toLowerCase().startsWith(root.toLowerCase())) return [rootCrumb]
-  if (current.toLowerCase() === root.toLowerCase()) return [rootCrumb]
+  const normalized = normalizePath(basePath).replace(/\/+$/, '')
+  if (!normalized) return []
 
-  const relative = current.slice(root.length).replace(/^\/+/, '')
-  const segments = relative ? relative.split('/').filter(Boolean) : []
+  // Windows drive path: D:/a/b -> D: > a > b
+  if (/^[A-Za-z]:/.test(normalized)) {
+    const drive = normalized.slice(0, 2)
+    const tail = normalized.slice(2).replace(/^\/+/, '')
+    const result: Breadcrumb[] = [{ name: drive, path: `${drive}/` }]
 
-  const result: Breadcrumb[] = [rootCrumb]
-  let accumulated = root
+    if (!tail) return result
+
+    let accumulated = `${drive}/`
+    for (const segment of tail.split('/').filter(Boolean)) {
+      accumulated = `${accumulated.replace(/\/+$/, '')}/${segment}`
+      result.push({ name: segment, path: accumulated })
+    }
+    return result
+  }
+
+  // POSIX-like absolute path: /a/b -> / > a > b
+  if (normalized.startsWith('/')) {
+    const segments = normalized.split('/').filter(Boolean)
+    const result: Breadcrumb[] = [{ name: '/', path: '/' }]
+    let accumulated = ''
+    for (const segment of segments) {
+      accumulated = `${accumulated}/${segment}`
+      result.push({ name: segment, path: accumulated })
+    }
+    return result
+  }
+
+  // Fallback (relative path)
+  const segments = normalized.split('/').filter(Boolean)
+  const result: Breadcrumb[] = []
+  let accumulated = ''
   for (const segment of segments) {
-    accumulated = `${accumulated.replace(/\/+$/, '')}/${segment}`
+    accumulated = accumulated ? `${accumulated}/${segment}` : segment
     result.push({ name: segment, path: accumulated })
   }
   return result
@@ -261,11 +283,6 @@ async function goUp(): Promise<void> {
 
 async function openItem(item: ImageItem): Promise<void> {
   if (renamingPath.value) return
-
-  if (item.isParentNav && item.targetPath) {
-    await loadDirectory(item.targetPath)
-    return
-  }
 
   selectedPath.value = item.path
   logSelectionDebug('open-item')
@@ -382,7 +399,7 @@ function onItemDragStart(event: DragEvent, item: ImageItem): void {
 }
 
 function getDropTargetDir(item: ImageItem): string | null {
-  if (item.isParentNav) return item.targetPath || null
+  if (item.isParentNav) return item.path || null
   if (item.isDirectory) return item.path
   return null
 }
@@ -537,15 +554,7 @@ watch(dropTargetPath, (next, prev) => {
         <button @click="chooseRootDirectory" :disabled="loading" title="Set root folder">Set Root</button>
       </div>
 
-      <div class="toolbar-center" v-if="hasRoot">
-        <button v-for="crumb in breadcrumbs" :key="crumb.path" class="breadcrumb" @click="goToBreadcrumb(crumb.path)"
-          :disabled="loading">
-          {{ crumb.name }}
-        </button>
-      </div>
-      <div class="toolbar-center" v-else>
-        <span class="path-hint">Please select an image root folder first.</span>
-      </div>
+      <div class="toolbar-spacer"></div>
 
       <div class="toolbar-right">
         <button @click="importByDialog" :disabled="loading || !hasRoot">Import Images</button>
@@ -554,16 +563,28 @@ watch(dropTargetPath, (next, prev) => {
       </div>
     </div>
 
+    <div class="breadcrumb-row" v-if="hasRoot">
+      <template v-for="(crumb, index) in breadcrumbs" :key="crumb.path">
+        <button class="crumb-link" :class="{ 'is-last': index === breadcrumbs.length - 1 }"
+          @click="goToBreadcrumb(crumb.path)" :disabled="loading || index === breadcrumbs.length - 1"
+          :aria-current="index === breadcrumbs.length - 1 ? 'page' : undefined">
+          {{ crumb.name }}
+        </button>
+      </template>
+    </div>
+    <div class="breadcrumb-row" v-else>
+      <span class="path-hint">Please select an image root folder first.</span>
+    </div>
+
     <div class="content" v-if="hasRoot">
       <div v-if="sortedItems.length === 0" class="empty-state">
         <p>This folder is empty. Drag images here or use "Import Images".</p>
       </div>
 
       <div v-else class="item-grid">
-        <div v-for="item in sortedItems" :key="item.path" class="item-card" :class="{
-          selected: selectedPath === item.path,
-          'drop-target': dropTargetPath === item.path
-        }" :draggable="renamingPath !== item.path && !item.isParentNav" @click="selectedPath = item.path"
+        <div v-for="item in sortedItems" :key="item.path" class="item-card"
+          :class="{ selected: selectedPath === item.path, 'drop-target': dropTargetPath === item.path }"
+          :draggable="renamingPath !== item.path && !item.isParentNav" @click="selectedPath = item.path"
           @dblclick="openItem(item)" @dragstart="onItemDragStart($event, item)" @dragenter="onItemDragEnter($event, item)"
           @dragover="onItemDragOver($event, item)" @dragleave="onItemDragLeave($event, item)"
           @drop="onItemDrop($event, item)">
@@ -619,6 +640,10 @@ watch(dropTargetPath, (next, prev) => {
   gap: 8px;
 }
 
+.toolbar-spacer {
+  min-width: 0;
+}
+
 .toolbar button,
 .toolbar select {
   height: 30px;
@@ -636,30 +661,59 @@ watch(dropTargetPath, (next, prev) => {
   opacity: 0.55;
 }
 
-.toolbar-center {
+.breadcrumb-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
+  min-height: 28px;
+  gap: 0;
+  padding: 4px 12px;
+  border-bottom: 1px solid #eaeef2;
+  background: #f8fafc;
   white-space: nowrap;
+  overflow-x: auto;
+}
+
+.crumb-link {
+  border: none;
+  background: transparent;
+  padding: 0;
+  height: 20px;
+  max-width: 96px;
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #57606a;
+  text-decoration: none;
+  font-size: 12px;
+  line-height: 20px;
+}
+
+.crumb-link::after {
+  content: '>';
+  color: #8c959f;
   padding: 0 4px;
 }
 
-.breadcrumb {
-  border: 1px solid #d0d7de;
-  background: #ffffff;
-  border-radius: 4px;
-  padding: 0 10px;
-  height: 28px;
-  max-width: 220px;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.crumb-link.is-last::after {
+  content: '';
+  padding: 0;
+}
+
+.crumb-link:hover:not(:disabled) {
+  color: #0969da;
+}
+
+.crumb-link:disabled {
+  color: #24292f;
+  text-decoration: none;
+  cursor: default;
+  opacity: 1;
 }
 
 .path-hint {
   color: #656d76;
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .content {
