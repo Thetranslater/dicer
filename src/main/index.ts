@@ -10,7 +10,6 @@ import { windowManager} from './windowManager'
 import {openFile, registerCoreIpcHandlers} from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 
-//任何代码更新都应在下方，不应插入在上�?
 // 注册本地文件协议
 function registerLocalProtocol(): void {
   protocol.handle('app', (request) => {
@@ -24,7 +23,6 @@ function registerLocalProtocol(): void {
     return new Response(readFileSync(filePath))
   })
 }
-
 
 // 测试上传图片
 function testUploadImage(): void {
@@ -148,7 +146,14 @@ function createWindow(): void {
           label: '保存',
           accelerator: 'CmdOrCtrl+S',
           click: () => {
-            mainWindow.webContents.send('menu-file-save')
+            const details = {
+              broadcastInfo: 'menu-savefile',
+              dev:{
+                source:'menu-save-click',
+                message:'由菜单触发的保存'
+              }
+            }
+            mainWindow.webContents.send('sys:savefilec', details)
           }
         },
         {
@@ -247,7 +252,7 @@ app.on('window-all-closed', () => {
 // code. You can also put them in separate files and require them here.
 
 // IPC 处理程序
-ipcMain.handle('save-file', async (_event, content: string, defaultPath?: string, filters?: { name: string; extensions: string[] }[]) => {
+ipcMain.handle('sys:savefile', async (_event, content: string, defaultPath?: string, filters?: { name: string; extensions: string[] }[]) => {
   const result = await dialog.showSaveDialog({
     defaultPath: defaultPath,
     filters: filters || [{ name: 'All Files', extensions: ['*'] }]

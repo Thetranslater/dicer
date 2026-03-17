@@ -1,5 +1,5 @@
 import { ElectronAPI } from '@electron-toolkit/preload'
-import type { OpenFileOptions, OpenFileDetails } from '../renderer/src/utils/fileService'
+import type { OpenFileOptions, OpenFileDetails, SaveFileDetails } from '../includes/fileService'
 
 type ImageManagerConfig = {
   rootPath: string | null
@@ -20,8 +20,8 @@ type ImageDirResult = {
 
 export interface IAPI {
   //signal:renderer process to main, channel: main to renderer process
-  saveFileSignal: (callback: () => void) => void
-  saveFileImpl: (content: string, defaultPath?: string, filters?: { name: string; extensions: string[] }[]) => Promise<string | null>
+  saveFileChannel: (callback: (details?:SaveFileDetails) => void) => void
+  saveFileSignal: (content: string, defaultPath?: string, filters?: { name: string; extensions: string[] }[]) => Promise<string | null>
   openFileChannel: (callback: (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => void) => void
   openFileSignal:(options? : OpenFileOptions) => void
 

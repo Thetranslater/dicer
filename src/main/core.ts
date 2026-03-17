@@ -1,7 +1,7 @@
 import { dialog, ipcMain } from 'electron'
 import { readFileSync, statSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
-import { OpenFileOptions, OpenFileDetails, FSNode } from '../renderer/src/utils/fileService'
+import { OpenFileOptions, OpenFileDetails, FSNode } from '../includes/fileService'
 
 function buildDirectoryNode(directoryPath: string): FSNode {
   const children: FSNode[] = []

@@ -194,6 +194,7 @@ async function chooseRootDirectory(): Promise<void> {
   errorMessage.value = ''
   statusMessage.value = ''
   try {
+    
     const selected = await window.api.imagesSelectRoot()
     if (!selected) {
       statusMessage.value = rootPath.value

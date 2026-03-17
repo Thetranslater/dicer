@@ -12,11 +12,9 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import { OpenFileService, OpenFileOptions } from '../utils/fileService'
+import { FileService, OpenFileOptions, OpenFileDetails, SaveFileDetails } from '../../../includes/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
-
-import type { OpenFileDetails } from '../utils/fileService'
 
 const { setEditor } = useEditorStore()
 
@@ -61,7 +59,8 @@ const editor = useEditor({
 
 
 onMounted(() => {
-  OpenFileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
+  //content insertion handler
+  FileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
     if (!editor.value) return
     if (details?.broadcastInfo !== 'menu-openfile') return
     if (content) {
@@ -83,12 +82,22 @@ onMounted(() => {
     console.log(details.dev)
   })
 
-  OpenFileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
+  //image insertion handler
+  FileService.OpenFileListeners.push((filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
     if (!editor.value) return
     if (details?.broadcastInfo !== 'editor-insertimage') return
 
     const imagePath = `app://${filePath}`
     editor.value.chain().focus().setImage({ src: imagePath }).run()
+  })
+
+  //saving signal from mainprocess
+  FileService.SaveFileListeners.push((details?: SaveFileDetails) => {
+    if (!editor.value) return
+    if (details?.broadcastInfo !== 'menu-savefile') return
+
+    const content = editor.value.getHTML()
+    if (content !== null) window.api.saveFileSignal(content, undefined, [{ name: 'HTML', extensions: ['html'] }])
   })
 })
 

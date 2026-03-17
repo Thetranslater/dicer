@@ -1,20 +1,26 @@
-// 文件操作服务 - 处理保存和加载逻辑 1-12 行（已完成，在今后任何对话中都不需要修改）
-import { useEditorStore } from "../composables/useEditorStore"
-
-const editorStore = useEditorStore()
-
-const editorContentRequire = () => {
-  const editor = editorStore.getEditor()
-  const content = editor?.getHTML()
-  if(content != null) window.api.saveFileImpl(content, undefined, [{name : 'HTML' ,extensions : ['.html']}])
-}
-
-window.api.saveFileSignal(editorContentRequire)
-
 export type FSNode = {
   name: string
   children?: FSNode[]
 }
+
+//SaveFile
+export type SaveFileOptions = {
+  broadcastInfo?:string
+  dev?:{
+    source?:string
+    memssage?:string
+  }
+}
+
+export type SaveFileDetails = {
+  broadcastInfo?:string
+  dev?:{
+    source?:string
+    message?:string
+  }
+}
+
+export type SaveFileCallback = (details?:SaveFileDetails) => void
 
 //OpenFile
 export type OpenFileOptions = {
@@ -38,15 +44,23 @@ export type OpenFileDetails = {
 }
 export type OpenFileCallback = (filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => void
 
-export class OpenFileService{
+//FileService , emit all callbacks registered from renderer. Renderer using ipc to communicate to main process.
+export class FileService{
   public static readonly OpenFileListeners: OpenFileCallback[] = []
+  public static readonly SaveFileListeners: SaveFileCallback[] = []
   public static emitAfterRead(filePath: string | string[], content?: string | string[], details? : OpenFileDetails) {
     this.OpenFileListeners.forEach(callback => callback(filePath, content, details))
+  }
+  public static emitBeforeSave(details? : SaveFileDetails){
+    this.SaveFileListeners.forEach(callback => callback(details))
   }
 }
 
 export const setupMenuListeners = () => {
   window.api.openFileChannel((filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => {
-    OpenFileService.emitAfterRead(filePath, content, details)
+    FileService.emitAfterRead(filePath, content, details)
+  })
+  window.api.saveFileChannel((details?:SaveFileDetails) => {
+    FileService.emitBeforeSave(details)
   })
 }
