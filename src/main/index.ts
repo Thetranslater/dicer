@@ -3,8 +3,8 @@ import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
-import { net } from 'electron'
-import { URL } from 'url'
+// import { net } from 'electron'
+// import { URL } from 'url'
 
 import { windowManager} from './windowManager'
 import {openFile, registerCoreIpcHandlers} from './core'
@@ -14,8 +14,7 @@ import { registerImageManagerIpcHandlers } from './imageManagerService'
 function registerLocalProtocol(): void {
   protocol.handle('app', (request) => {
     let filePath = request.url.replace(/^app:\/\//, '')
-    // �?URL 编码的路径转换为普通路�?    filePath = decodeURIComponent(filePath)
-
+    filePath = decodeURIComponent(filePath)
     // 还原 Windows 盘符中被浏览器去掉的冒号
     // 例如 C/User/... -> C:/Users/...
     filePath = filePath.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
@@ -25,61 +24,61 @@ function registerLocalProtocol(): void {
 }
 
 // 测试上传图片
-function testUploadImage(): void {
-  const imagePath = join(__dirname, '../../test.jpg')
-  console.log('读取图片路径:', imagePath)
+// function testUploadImage(): void {
+//   const imagePath = join(__dirname, '../../test.jpg')
+//   console.log('读取图片路径:', imagePath)
 
-  const imageBuffer = readFileSync(imagePath)
-  console.log('图片大小:', imageBuffer.length, 'bytes')
-  const params = {
-    'v2': '1',
-    'func': 'upload',
-    'fid': '-447601',
-    'auth': '03b0912569b2c835462d396c6464a39f71a0008b8631051b8f34ab976a56',
-    'attachment_file1': imageBuffer.toString(),
-    'attachment_file1_dscp': 'test image',
-    'attachment_file1_url_utf8_name': encodeURIComponent('test.jpg'),
-  }
-  const baseUrl = 'https://img8.nga.cn/attach.php'
-  const url = new URL(baseUrl)
-  for (const key in params) {
-    if (key === 'attachment_file1') {
-      continue // 二进制数据单独处�?    }
-    url.searchParams.append(key, params[key as keyof typeof params])
-    }
-  }
+//   const imageBuffer = readFileSync(imagePath)
+//   console.log('图片大小:', imageBuffer.length, 'bytes')
+//   const params = {
+//     'v2': '1',
+//     'func': 'upload',
+//     'fid': '-447601',
+//     'auth': '03b0912569b2c835462d396c6464a39f71a0008b8631051b8f34ab976a56',
+//     'attachment_file1': imageBuffer.toString(),
+//     'attachment_file1_dscp': 'test image',
+//     'attachment_file1_url_utf8_name': encodeURIComponent('test.jpg'),
+//   }
+//   const baseUrl = 'https://img8.nga.cn/attach.php'
+//   const url = new URL(baseUrl)
+//   for (const key in params) {
+//     if (key === 'attachment_file1') {
+//       continue // 二进制数据单独处�?    }
+//     url.searchParams.append(key, params[key as keyof typeof params])
+//     }
+//   }
 
-  const request = net.request({
-    method: 'POST',
-    protocol: 'https:',
-    url: url.toString(),
-    headers: {
-      'Cookie': 'Hm_lvt_6933ef97905336bef84f9609785bcc3d=1773319391; HMACCOUNT=7A2D040D741BF72F; ngacn0comUserInfo=UIDIAIPI%09UIDIAIPI%0939%0939%09%0910%090%094%090%090%09192_20%2C130_10; ngaPassportUid=61903141; ngaPassportUrlencodedUname=UIDIAIPI; ngaPassportCid=X8uiqit3hkql9fnnmd7l461vjnvhpb65s1gomg7u; HM_tbj=p9whnc%7C1kw.w0; lastpath=/thread.php?fid=-447601; ngacn0comUserInfoCheck=32a870d6e40ec6ffc4da228231236067; ngacn0comInfoCheckTime=1773323427; bbsmisccookies=%7B%22pv_count_for_insad%22%3A%7B0%3A-24%2C1%3A1773334830%7D%2C%22insad_views%22%3A%7B0%3A1%2C1%3A1773334830%7D%2C%22uisetting%22%3A%7B0%3A1%2C1%3A1773925337%7D%7D; Hm_lpvt_6933ef97905336bef84f9609785bcc3d=1773323480; lastvisit=1773323492',
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0',
-      //'Referer': 'https://ngabbs.com/post.php?action=new&fid=-447601',
-      'Origin': 'https://ngabbs.com',
-      'Accept': '*/*',
-      'Accept-Language': 'zh-CN,zh;q=0.9',
-      'Connection': 'keep-alive',
-      'Content-Type': 'multipart/form-data; boundary=----WebKitFormBoundary'
-    }
-  })
+//   const request = net.request({
+//     method: 'POST',
+//     protocol: 'https:',
+//     url: url.toString(),
+//     headers: {
+//       'Cookie': 'Hm_lvt_6933ef97905336bef84f9609785bcc3d=1773319391; HMACCOUNT=7A2D040D741BF72F; ngacn0comUserInfo=UIDIAIPI%09UIDIAIPI%0939%0939%09%0910%090%094%090%090%09192_20%2C130_10; ngaPassportUid=61903141; ngaPassportUrlencodedUname=UIDIAIPI; ngaPassportCid=X8uiqit3hkql9fnnmd7l461vjnvhpb65s1gomg7u; HM_tbj=p9whnc%7C1kw.w0; lastpath=/thread.php?fid=-447601; ngacn0comUserInfoCheck=32a870d6e40ec6ffc4da228231236067; ngacn0comInfoCheckTime=1773323427; bbsmisccookies=%7B%22pv_count_for_insad%22%3A%7B0%3A-24%2C1%3A1773334830%7D%2C%22insad_views%22%3A%7B0%3A1%2C1%3A1773334830%7D%2C%22uisetting%22%3A%7B0%3A1%2C1%3A1773925337%7D%7D; Hm_lpvt_6933ef97905336bef84f9609785bcc3d=1773323480; lastvisit=1773323492',
+//       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0',
+//       //'Referer': 'https://ngabbs.com/post.php?action=new&fid=-447601',
+//       'Origin': 'https://ngabbs.com',
+//       'Accept': '*/*',
+//       'Accept-Language': 'zh-CN,zh;q=0.9',
+//       'Connection': 'keep-alive',
+//       'Content-Type': 'multipart/form-data; boundary=----WebKitFormBoundary'
+//     }
+//   })
 
-  request.on('response', (response) => {
-    console.log(`STATUS: ${response.statusCode}`)
-    console.log(`HEADERS: ${JSON.stringify(response.headers)}`)
-    let data = ''
-    response.on('data', (chunk) => {
-      data += chunk.toString()
-    })
-    response.on('end', () => {
-      console.log('上传响应:', data)
-    })
-  })
+//   request.on('response', (response) => {
+//     console.log(`STATUS: ${response.statusCode}`)
+//     console.log(`HEADERS: ${JSON.stringify(response.headers)}`)
+//     let data = ''
+//     response.on('data', (chunk) => {
+//       data += chunk.toString()
+//     })
+//     response.on('end', () => {
+//       console.log('上传响应:', data)
+//     })
+//   })
 
-  //request.write(fullBody)
-  request.end()
-}
+//   //request.write(fullBody)
+//   request.end()
+// }
 
 function createWindow(): void {
   // Create the browser window.
@@ -162,7 +161,14 @@ function createWindow(): void {
           label: '另存为..',
           accelerator: 'CmdOrCtrl+Shift+S',
           click: () => {
-            mainWindow.webContents.send('menu-file-saveas')
+            const details = {
+              broadcastInfo: 'menu-saveas-bbs',
+              dev: {
+                source: 'menu-saveas-click',
+                message: 'Save as NGA BBS'
+              }
+            }
+            mainWindow.webContents.send('sys:savefilec', details)
           }
         },
         { type: 'separator' },

@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileService, type OpenFileOptions, type OpenFileDetails } from '../../../includes/fileService'
+import { FileService, type OpenFileOptions, type OpenFileDetails } from '../utils/fileService'
 
 type ImageItem = {
   name: string
@@ -15,11 +15,10 @@ type Breadcrumb = {
   path: string
 }
 //#region 'var set'
-const VIRTUAL_PARENT_PATH = '__virtual_parent__'
 const rootPath = ref<string | null>(null)
 const currentPath = ref<string>('')
 const items = ref<ImageItem[]>([])
-const selectedPath = ref<string | null>(null)
+const selectedPaths = ref<string[]>([])
 const dropTargetPath = ref<string | null>(null)
 const dragEnterDepthMap = new Map<string, number>()
 const renamingPath = ref<string | null>(null)
@@ -31,44 +30,54 @@ const errorMessage = ref('')
 const statusMessage = ref('')
 //#endregion
 
-//#region 'Ipc callbacks'
-function IpcCallbackRegister() {
-  FileService.OpenFileListeners.set('imgmanager-chooseroot', async (filePath: string | string[], _content, details?: OpenFileDetails) => {
-    if (details?.broadcastInfo !== 'imgmanager-chooseroot' || details?.isDialogCanceled) return
-    try {
-      await loadDirectory(filePath as string)
-      statusMessage.value = 'Image root has been set.'
-    } catch (error) {
-      errorMessage.value = toErrorMessage(error)
-    } finally {
-      loading.value = false
-    }
-  })
-}
-//#endregion
-
 //#region 'basic function'
-async function chooseRootDirectory(): Promise<void> {
+function normalizePath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+function isPathSelected(path: string): boolean {
+  return selectedPaths.value.includes(path)
+}
+function toImageSrc(path: string): string {
+  return `app://${encodeURI(normalizePath(path))}`
+}
+async function loadDirectory(path?: string): Promise<void> {
   loading.value = true
   errorMessage.value = ''
-  statusMessage.value = ''
-  const options: OpenFileOptions = {
-    behavior: 'path',
-    isMultiselection: false,
-    broadcastInfo: 'imgmanager-chooseroot',
-    dialogProperties: ['openDirectory', 'createDirectory'],
-    dev: {
-      source: 'imagemanager-chooseRootDirectory',
-      message: 'ImgManager选择根目录功能'
-    }
+  try {
+    const result = await window.api.imagesListDir(path)
+    rootPath.value = normalizePath(result.rootPath)
+    currentPath.value = normalizePath(result.currentPath)
+    items.value = result.items
+    selectedPaths.value = []
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
   }
-  window.api.openFileSignal(options)
+}
+function getParentPath(path: string): string | null {
+  const normalized = normalizePath(path).replace(/\/+$/, '')
+  if (!normalized) return null
+  if (/^[A-Za-z]:$/.test(normalized)) return null
+
+  const idx = normalized.lastIndexOf('/')
+  if (idx < 0) return null
+
+  // Keep drive root as "D:/" instead of "D:".
+  // "D:" may resolve to drive working directory on Windows.
+  if (idx === 2 && /^[A-Za-z]:\//.test(normalized)) {
+    return normalized.slice(0, 3)
+  }
+
+  const parent = normalized.slice(0, idx)
+  return parent || null
 }
 //#endregion
 
-//#region reactive properties
+//#region 'reactive properties'
 const hasRoot = computed(() => Boolean(rootPath.value))
 const parentPath = computed(() => getParentPath(currentPath.value))
+const canGoUp = computed(() => Boolean(parentPath.value))
 const sortedItems = computed(() => {
   const list = [...items.value]
   list.sort((a, b) => {
@@ -89,60 +98,14 @@ const sortedItems = computed(() => {
 
   return list
 })
-const selectedItem = computed(() => {
-  if (!selectedPath.value) return null
-  return items.value.find((item) => item.path === selectedPath.value) || null
+const selectedItems = computed<ImageItem[]>(() => {
+  if (!selectedPaths.value || selectedPaths.value.length === 0) return []
+
+  const byPath = new Map(items.value.map((item) => [item.path, item]))
+  return selectedPaths.value
+    .map((path) => byPath.get(path))
+    .filter((item): item is ImageItem => Boolean(item))
 })
-//#endregion
-
-function logSelectionDebug(source: string): void {
-  const selected = selectedItem.value
-  console.log('[ImagesManager][Selection]', {
-    source,
-    currentPath: currentPath.value,
-    selectedPath: selectedPath.value,
-    selected: selected
-      ? {
-        name: selected.name,
-        path: selected.path,
-        isDirectory: selected.isDirectory,
-        size: selected.size
-      }
-      : null
-  })
-}
-
-function getStateSnapshot() {
-  return {
-    rootPath: rootPath.value,
-    currentPath: currentPath.value,
-    hasRoot: hasRoot.value,
-    loading: loading.value,
-    errorMessage: errorMessage.value,
-    statusMessage: statusMessage.value,
-    selectedPath: selectedPath.value,
-    selectedItem: selectedItem.value
-      ? {
-        name: selectedItem.value.name,
-        path: selectedItem.value.path,
-        isDirectory: selectedItem.value.isDirectory,
-        size: selectedItem.value.size
-      }
-      : null,
-    itemsCount: items.value.length,
-    renamingPath: renamingPath.value,
-    dropTargetPath: dropTargetPath.value
-  }
-}
-
-function logStateChange(key: string, prev: unknown, next: unknown): void {
-  console.groupCollapsed(`[ImagesManager][StateChange] ${key}`)
-  console.log('prev:', prev)
-  console.log('next:', next)
-  console.log('snapshot:', getStateSnapshot())
-  console.groupEnd()
-}
-
 const breadcrumbs = computed<Breadcrumb[]>(() => {
   const basePath = currentPath.value || rootPath.value
   if (!basePath) return []
@@ -188,29 +151,277 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
   }
   return result
 })
+//#endregion
 
-const canGoUp = computed(() => Boolean(parentPath.value))
-
-function normalizePath(path: string): string {
-  return path.replace(/\\/g, '/')
+//#region 'Ipc callbacks'
+function IpcCallbackRegister() {
+  FileService.OpenFileListeners.set('imgmanager-chooseroot', async (filePath: string | string[], _content, details?: OpenFileDetails) => {
+    if (details?.broadcastInfo !== 'imgmanager-chooseroot' || details?.isDialogCanceled) return
+    try {
+      await loadDirectory(filePath as string)
+      statusMessage.value = 'Image root has been set.'
+    } catch (error) {
+      errorMessage.value = toErrorMessage(error)
+    } finally {
+      loading.value = false
+    }
+  })
 }
+//#endregion
 
-function getParentPath(path: string): string | null {
-  const normalized = normalizePath(path).replace(/\/+$/, '')
-  if (!normalized) return null
-  if (/^[A-Za-z]:$/.test(normalized)) return null
-
-  const idx = normalized.lastIndexOf('/')
-  if (idx < 0) return null
-
-  // Keep drive root as "D:/" instead of "D:".
-  // "D:" may resolve to drive working directory on Windows.
-  if (idx === 2 && /^[A-Za-z]:\//.test(normalized)) {
-    return normalized.slice(0, 3)
+//#region 'selection'
+function toggleSelection(path: string): void {
+  const index = selectedPaths.value.indexOf(path)
+  if (index >= 0) {
+    selectedPaths.value.splice(index, 1)
+    return
   }
 
-  const parent = normalized.slice(0, idx)
-  return parent || null
+  selectedPaths.value = [...selectedPaths.value, path]
+}
+
+function onItemClick(event: MouseEvent, item: ImageItem): void {
+  if (event.ctrlKey) {
+    if (parentPath.value !== null) {
+      const parentIndex = selectedPaths.value.indexOf(parentPath.value)
+      if (parentIndex >= 0) selectedPaths.value.splice(parentIndex, 1)
+    }
+    if (!item.isParentNav) {
+      toggleSelection(item.path)
+    }
+    logSelectionDebug('onItemClick')
+    return
+  }
+
+  selectedPaths.value = [item.path]
+
+  logSelectionDebug('onItemClick')
+}
+//#endregion
+
+//#region 'debug'
+function getStateSnapshot() {
+  return {
+    rootPath: rootPath.value,
+    currentPath: currentPath.value,
+    hasRoot: hasRoot.value,
+    loading: loading.value,
+    errorMessage: errorMessage.value,
+    statusMessage: statusMessage.value,
+    selectedPaths: [...selectedPaths.value],
+    itemsCount: items.value.length,
+    renamingPath: renamingPath.value,
+    dropTargetPath: dropTargetPath.value
+  }
+}
+function logSelectionDebug(source: string): void {
+  console.log('[ImagesManager][Selection]', {
+    source,
+    currentPath: currentPath.value,
+    selectedPaths: [...selectedPaths.value],
+  })
+}
+//#endregion
+
+//#region 'workspace change': chooseroot, openitem, goup, breadcrumbs， refresh(to self), create folder(to self)
+async function chooseRootDirectory(): Promise<void> {
+  loading.value = true
+  errorMessage.value = ''
+  statusMessage.value = ''
+  const options: OpenFileOptions = {
+    behavior: 'path',
+    isMultiselection: false,
+    broadcastInfo: 'imgmanager-chooseroot',
+    dialogProperties: ['openDirectory', 'createDirectory'],
+    dev: {
+      source: 'imagemanager-chooseRootDirectory',
+      message: 'ImgManager选择根目录功能'
+    }
+  }
+  window.api.openFileSignal(options)
+}
+async function goToBreadcrumb(path: string): Promise<void> {
+  await loadDirectory(path)
+}
+async function refresh(): Promise<void> {
+  if (!hasRoot.value) return
+  await loadDirectory(currentPath.value || undefined)
+}
+async function goUp(): Promise<void> {
+  if (!parentPath.value) return
+  await loadDirectory(parentPath.value)
+}
+async function openItem(item: ImageItem): Promise<void> {
+  if (renamingPath.value) return
+
+  if (item.isDirectory) {
+    await loadDirectory(item.path)
+  }
+}
+async function createFolder(): Promise<void> {
+  if (!currentPath.value) return
+
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const createdPath = await window.api.imagesCreateFolder(currentPath.value)
+    const createdName = displayNameForPath(createdPath)
+    statusMessage.value = `Folder created: ${createdName}`
+    await refresh()
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
+}
+//#endregion
+
+//#region 'drag-drop'
+function isSamePath(a: string, b: string): boolean {
+  return normalizePath(a) === normalizePath(b)
+}
+function getInternalDragSources(dataTransfer: DataTransfer | null | undefined): string[] {
+  if (!dataTransfer) return []
+
+  const multi = dataTransfer.getData('application/x-images-item-paths')
+  let transferData: string[] = []
+  if (multi) {
+    try {
+      const parsed = JSON.parse(multi)
+      if (Array.isArray(parsed)) {
+        transferData = parsed.filter((v): v is string => typeof v === 'string' && v.length > 0)
+      }
+    } catch {
+      // ignore malformed payload
+    }
+  }
+  return transferData
+}
+function hasInternalDragData(dataTransfer: DataTransfer | null | undefined): boolean {
+  if (!dataTransfer) return false
+  const types = Array.from(dataTransfer.types ?? [])
+  return types.includes('application/x-images-item-paths')
+}
+function isExternalFileDrag(dataTransfer: DataTransfer | null | undefined): boolean {
+  if (!dataTransfer) return false
+  const types = Array.from(dataTransfer.types ?? [])
+  return types.includes('Files') && !hasInternalDragData(dataTransfer)
+}
+async function handleDrop(event: DragEvent, targetDir: string): Promise<void> {
+  if (!targetDir) return
+
+  const internalSources = getInternalDragSources(event.dataTransfer)
+  const files = Array.from(event.dataTransfer?.files ?? []) as Array<File>
+  const externalSources = files.map((f) => window.electron.webUtils.getPathForFile(f)).filter((p): p is string => Boolean(p))
+
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    if (internalSources.length > 0) {
+      const moveSources = internalSources.filter((source) => !isSamePath(source, targetDir))
+      if (moveSources.length === 0) return
+
+      const results = await Promise.allSettled(
+        moveSources.map((source) => window.api.imagesMove(source, targetDir))
+      )
+      const successCount = results.filter((r) => r.status === 'fulfilled').length
+      const failCount = results.length - successCount
+
+      statusMessage.value = failCount === 0
+        ? `Moved ${successCount} item(s).`
+        : `Moved ${successCount} item(s), failed ${failCount} item(s).`
+
+      await loadDirectory(currentPath.value)
+      return
+    } else if (externalSources.length > 0) {
+      const imported = await window.api.imagesImportFiles(targetDir, externalSources)
+      statusMessage.value = imported.length > 0 ? `Imported ${imported.length} file(s)` : 'No image files imported'
+      await loadDirectory(currentPath.value)
+    }
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
+}
+function onItemDragStart(event: DragEvent, item: ImageItem): void {
+  if (item.isParentNav || renamingPath.value === item.path) {
+    event.preventDefault()
+    return
+  }
+
+  const useMulti = selectedPaths.value.length > 1 && selectedPaths.value.includes(item.path)
+  const dragSources = useMulti ? selectedPaths.value : [item.path]
+
+  event.dataTransfer?.setData('application/x-images-item-paths', JSON.stringify(dragSources))
+  event.dataTransfer?.setData('text/plain', dragSources.join('\n'))
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
+}
+function getDropTargetDir(item: ImageItem): string | null {
+  if (item.isParentNav) return item.path || null
+  if (item.isDirectory) return item.path
+  return null
+}
+function onItemDragEnter(event: DragEvent, item: ImageItem): void {
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+
+  const nextDepth = (dragEnterDepthMap.get(item.path) || 0) + 1
+  dragEnterDepthMap.set(item.path, nextDepth)
+  dropTargetPath.value = item.path
+}
+function onItemDragOver(event: DragEvent, item: ImageItem): void {
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+function onItemDragLeave(event: DragEvent, item: ImageItem): void {
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
+  event.preventDefault()
+
+  const nextDepth = (dragEnterDepthMap.get(item.path) || 1) - 1
+  if (nextDepth <= 0) {
+    dragEnterDepthMap.delete(item.path)
+    if (dropTargetPath.value === item.path) {
+      dropTargetPath.value = null
+    }
+    return
+  }
+
+  dragEnterDepthMap.set(item.path, nextDepth)
+}
+async function onItemDrop(event: DragEvent, item: ImageItem): Promise<void> {
+  const dropDir = getDropTargetDir(item)
+  if (!dropDir) return
+  event.preventDefault()
+  dragEnterDepthMap.delete(item.path)
+  dropTargetPath.value = null
+  await handleDrop(event, dropDir)
+}
+function onWorkspaceDragOver(event: DragEvent): void {
+  if (!isExternalFileDrag(event.dataTransfer)) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+}
+async function onWorkspaceDrop(event: DragEvent): Promise<void> {
+  if (!isExternalFileDrag(event.dataTransfer)) return
+  event.preventDefault()
+  dragEnterDepthMap.clear()
+  dropTargetPath.value = null
+  await handleDrop(event, currentPath.value)
+}
+//#endregion
+
+function logStateChange(key: string, prev: unknown, next: unknown): void {
+  console.groupCollapsed(`[ImagesManager][StateChange] ${key}`)
+  console.log('prev:', prev)
+  console.log('next:', next)
+  console.log('snapshot:', getStateSnapshot())
+  console.groupEnd()
 }
 
 function displayNameForPath(path: string): string {
@@ -220,33 +431,9 @@ function displayNameForPath(path: string): string {
   return parts[parts.length - 1] || normalized
 }
 
-function toImageSrc(path: string): string {
-  return `app://${encodeURI(normalizePath(path))}`
-}
-
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
-}
-
-function setRenameInputRef(el: Element | null): void {
-  renameInputRef.value = el as HTMLInputElement | null
-}
-
-async function loadDirectory(path?: string): Promise<void> {
-  loading.value = true
-  errorMessage.value = ''
-  try {
-    const result = await window.api.imagesListDir(path)
-    rootPath.value = result.rootPath
-    currentPath.value = result.currentPath
-    items.value = result.items
-    selectedPath.value = null
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
-  }
 }
 
 async function initialize(): Promise<void> {
@@ -267,57 +454,17 @@ async function initialize(): Promise<void> {
   }
 }
 
-async function refresh(): Promise<void> {
-  if (!hasRoot.value) return
-  await loadDirectory(currentPath.value || undefined)
-}
-
-async function goToBreadcrumb(path: string): Promise<void> {
-  await loadDirectory(path)
-}
-
-async function goUp(): Promise<void> {
-  if (!parentPath.value) return
-  await loadDirectory(parentPath.value)
-}
-
-async function openItem(item: ImageItem): Promise<void> {
-  if (renamingPath.value) return
-
-  selectedPath.value = item.path
-  logSelectionDebug('open-item')
-  if (item.isDirectory) {
-    await loadDirectory(item.path)
-  }
-}
-
-async function createFolder(): Promise<void> {
-  if (!currentPath.value) return
-
-  loading.value = true
-  errorMessage.value = ''
-  try {
-    const createdPath = await window.api.imagesCreateFolder(currentPath.value)
-    const createdName = displayNameForPath(createdPath)
-    statusMessage.value = `Folder created: ${createdName}`
-    await loadDirectory(currentPath.value)
-    selectedPath.value = createdPath
-    logSelectionDebug('create-folder')
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
-  }
-}
-
 async function startRenameSelected(): Promise<void> {
-  if (!selectedItem.value || loading.value || renamingPath.value) return
-  renamingPath.value = selectedItem.value.path
-  renamingName.value = selectedItem.value.name
-  logSelectionDebug('rename-start')
-  await nextTick()
-  renameInputRef.value?.focus()
-  renameInputRef.value?.select()
+  if (selectedItems.value.length === 1) {
+    const selectedItem = selectedItems.value[0]
+    if (loading.value || renamingPath.value) return
+    renamingPath.value = selectedItem.path
+    renamingName.value = selectedItem.name
+    logSelectionDebug('rename-start')
+    await nextTick()
+    renameInputRef.value?.focus()
+    renameInputRef.value?.select()
+  }
 }
 
 function cancelRename(): void {
@@ -342,7 +489,7 @@ async function commitRename(): Promise<void> {
     const renamedPath = await window.api.imagesRename(targetPath, nextName)
     statusMessage.value = `Renamed to: ${nextName}`
     await loadDirectory(currentPath.value)
-    selectedPath.value = renamedPath
+    selectedPaths.value = [renamedPath]
     logSelectionDebug('rename-commit')
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -366,7 +513,7 @@ function onRenameInputKeydown(event: KeyboardEvent): void {
 }
 
 function onGlobalKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'F2' || !selectedItem.value || renamingPath.value) return
+  if (event.key !== 'F2' || selectedPaths.value.length !== 1 || renamingPath.value) return
   const target = event.target as HTMLElement | null
   if (target?.tagName === 'INPUT' || target?.isContentEditable) return
   event.preventDefault()
@@ -388,113 +535,11 @@ async function importByDialog(): Promise<void> {
   }
 }
 
-function onItemDragStart(event: DragEvent, item: ImageItem): void {
-  if (item.isParentNav || renamingPath.value === item.path) {
-    event.preventDefault()
-    return
-  }
-  event.dataTransfer?.setData('application/x-images-item-path', item.path)
-  event.dataTransfer?.setData('text/plain', item.path)
-  if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
-}
-
-function getDropTargetDir(item: ImageItem): string | null {
-  if (item.isParentNav) return item.path || null
-  if (item.isDirectory) return item.path
-  return null
-}
-
-function onItemDragEnter(event: DragEvent, item: ImageItem): void {
-  const dropDir = getDropTargetDir(item)
-  if (!dropDir) return
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-
-  const nextDepth = (dragEnterDepthMap.get(item.path) || 0) + 1
-  dragEnterDepthMap.set(item.path, nextDepth)
-  dropTargetPath.value = item.path
-}
-
-function onItemDragOver(event: DragEvent, item: ImageItem): void {
-  const dropDir = getDropTargetDir(item)
-  if (!dropDir) return
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
-}
-
-function onItemDragLeave(event: DragEvent, item: ImageItem): void {
-  const dropDir = getDropTargetDir(item)
-  if (!dropDir) return
-  event.preventDefault()
-
-  const nextDepth = (dragEnterDepthMap.get(item.path) || 1) - 1
-  if (nextDepth <= 0) {
-    dragEnterDepthMap.delete(item.path)
-    if (dropTargetPath.value === item.path) {
-      dropTargetPath.value = null
-    }
-    return
-  }
-
-  dragEnterDepthMap.set(item.path, nextDepth)
-}
-
-async function onItemDrop(event: DragEvent, item: ImageItem): Promise<void> {
-  const dropDir = getDropTargetDir(item)
-  if (!dropDir) return
-  event.preventDefault()
-  dragEnterDepthMap.delete(item.path)
-  dropTargetPath.value = null
-  await handleDrop(event, dropDir)
-}
-
-function onWorkspaceDragOver(event: DragEvent): void {
-  event.preventDefault()
-  if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
-}
-
-async function onWorkspaceDrop(event: DragEvent): Promise<void> {
-  event.preventDefault()
-  dragEnterDepthMap.clear()
-  dropTargetPath.value = null
-  await handleDrop(event, currentPath.value)
-}
-
-async function handleDrop(event: DragEvent, targetDir: string): Promise<void> {
-  if (!targetDir) return
-
-  const internalSource = event.dataTransfer?.getData('application/x-images-item-path')
-  const files = Array.from(event.dataTransfer?.files ?? []) as Array<File & { path?: string }>
-  const sourcePaths = files.map((f) => f.path).filter((p): p is string => Boolean(p))
-
-  loading.value = true
-  errorMessage.value = ''
-  try {
-    if (internalSource && internalSource !== targetDir) {
-      await window.api.imagesMove(internalSource, targetDir)
-      statusMessage.value = 'Moved successfully.'
-      await loadDirectory(currentPath.value)
-      return
-    }
-
-    if (sourcePaths.length > 0) {
-      const imported = await window.api.imagesImportFiles(targetDir, sourcePaths)
-      statusMessage.value = imported.length > 0 ? `Imported ${imported.length} file(s)` : 'No image files imported'
-      await loadDirectory(currentPath.value)
-    }
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
-  }
-}
-
 function openConfigPlaceholder(): void {
   window.alert('Image config page will be implemented in a later version.')
 }
 
 onMounted(() => {
-  console.log('imgmanager mounted')
   window.addEventListener('keydown', onGlobalKeydown)
   IpcCallbackRegister()
   void initialize()
@@ -504,49 +549,13 @@ onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown)
 })
 
-// watch(rootPath, (next, prev) => {
-//   logStateChange('rootPath', prev, next)
-// })
-
-// watch(currentPath, (next, prev) => {
-//   logStateChange('currentPath', prev, next)
-// })
-
-// watch(loading, (next, prev) => {
-//   logStateChange('loading', prev, next)
-// })
-
-// watch(errorMessage, (next, prev) => {
-//   logStateChange('errorMessage', prev, next)
-// })
-
-// watch(statusMessage, (next, prev) => {
-//   logStateChange('statusMessage', prev, next)
-// })
-
-// watch(selectedPath, (next, prev) => {
-//   logStateChange('selectedPath', prev, next)
-// })
-
-// watch(items, (next, prev) => {
-//   const prevSummary = Array.isArray(prev)
-//     ? prev.map((item) => ({ name: item.name, path: item.path, isDirectory: item.isDirectory }))
-//     : []
-//   const nextSummary = next.map((item) => ({ name: item.name, path: item.path, isDirectory: item.isDirectory }))
-//   logStateChange('items', prevSummary, nextSummary)
-// }, { deep: false })
-
-// watch(renamingPath, (next, prev) => {
-//   logStateChange('renamingPath', prev, next)
-// })
-
 watch(dropTargetPath, (next, prev) => {
   logStateChange('dropTargetPath', prev, next)
 })
 </script>
 
 <template>
-  <div class="images-window" @dragover="onWorkspaceDragOver" @drop="onWorkspaceDrop">
+  <div class="images-window" @dragover.prevent.stop="onWorkspaceDragOver" @drop.prevent.stop="onWorkspaceDrop">
     <div class="toolbar">
       <div class="toolbar-left">
         <button @click="goUp" :disabled="!canGoUp || loading" title="Go up">Up</button>
@@ -583,11 +592,11 @@ watch(dropTargetPath, (next, prev) => {
 
       <div v-else class="item-grid">
         <div v-for="item in sortedItems" :key="item.path" class="item-card"
-          :class="{ selected: selectedPath === item.path, 'drop-target': dropTargetPath === item.path }"
-          :draggable="renamingPath !== item.path && !item.isParentNav" @click="selectedPath = item.path"
+          :class="{ selected: isPathSelected(item.path), 'drop-target': dropTargetPath === item.path }"
+          :draggable="renamingPath !== item.path && !item.isParentNav" @click="onItemClick($event, item)"
           @dblclick="openItem(item)" @dragstart="onItemDragStart($event, item)" @dragenter="onItemDragEnter($event, item)"
-          @dragover="onItemDragOver($event, item)" @dragleave="onItemDragLeave($event, item)"
-          @drop="onItemDrop($event, item)">
+          @dragover.prevent.stop="onItemDragOver($event, item)" @dragleave="onItemDragLeave($event, item)"
+          @drop.prevent.stop="onItemDrop($event, item)">
           <div class="thumb">
             <template v-if="item.isDirectory">
               <div class="folder-icon">DIR</div>
@@ -598,8 +607,8 @@ watch(dropTargetPath, (next, prev) => {
           </div>
 
           <template v-if="renamingPath === item.path">
-            <input :ref="setRenameInputRef" v-model="renamingName" class="rename-input" @click.stop @dblclick.stop
-              @keydown="onRenameInputKeydown" @blur="commitRename" />
+            <input :ref="(el) => { renameInputRef = el as HTMLInputElement | null }" v-model="renamingName"
+              class="rename-input" @click.stop @dblclick.stop @keydown="onRenameInputKeydown" @blur="commitRename" />
           </template>
           <div v-else class="name" :title="item.name">{{ item.name }}</div>
         </div>

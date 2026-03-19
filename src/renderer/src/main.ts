@@ -3,7 +3,7 @@ import './assets/main.css'
 import { createApp } from 'vue'
 import App from './windows/App.vue'
 
-import {setupMenuListeners} from '../../includes/fileService'
+import {setupMenuListeners} from './utils/fileService'
 
 setupMenuListeners()
 

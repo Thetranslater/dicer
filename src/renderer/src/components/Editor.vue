@@ -12,9 +12,10 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import { FileService, OpenFileOptions, OpenFileDetails, SaveFileDetails } from '../../../includes/fileService'
+import { FileService, OpenFileOptions, OpenFileDetails, SaveFileDetails } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
+import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
 
 const { setEditor } = useEditorStore()
 
@@ -59,12 +60,21 @@ const fontFamilies = [
   { label: '默认', value: 'default' },
   { label: '宋体', value: 'SimSun' },
   { label: '黑体', value: 'SimHei' },
-  { label: '微软雅黑', value: 'Microsoft YaHei' },
-  { label: '楷体', value: 'KaiTi' },
-  { label: '仿宋', value: 'FangSong' },
   { label: 'Arial', value: 'Arial' },
+  { label: 'Arial Black', value: 'Arial Black' },
+  { label: 'Book Antiqua', value: 'Book Antiqua' },
+  { label: 'Century Gothic', value: 'Century Gothic' },
+  { label: 'Comic Sans MS', value: 'Comic Sans MS' },
+  { label: 'Courier New', value: 'Courier New' },
+  { label: 'Georgia', value: 'Georgia' },
+  { label: 'Impact', value: 'Impact' },
+  { label: 'Tahoma', value: 'Tahoma' },
   { label: 'Times New Roman', value: 'Times New Roman' },
-  { label: 'Courier New', value: 'Courier New' }
+  { label: 'Trebuchet MS', value: 'Trebuchet MS' },
+  { label: 'Script MT Bold', value: 'Script MT Bold' },
+  { label: 'Stencil', value: 'Stencil' },
+  { label: 'Verdana', value: 'Verdana' },
+  { label: 'Lucida Console', value: 'Lucida Console' }
 ]
 const fontSizes = [
   { label: '12px', value: '12px' },
@@ -85,6 +95,30 @@ const colors = Array.from({ length: 24 }, (_, i) => ({
 //#endregion
 
 //#region 'Ipc Callbacks'
+const handleEditorSave = (details?: SaveFileDetails) => {
+  if (!editor.value) return
+  if (details?.broadcastInfo !== 'menu-savefile') return
+
+  const content = editor.value.getJSON()
+  console.log(content)
+  // if (content !== null) {
+  //   window.api.saveFileSignal(
+  //     JSON.stringify(content, null, 2),
+  //     undefined,
+  //     [{ name: 'JSON', extensions: ['json'] }]
+  //   )
+  // }
+}
+
+const handleEditorSaveAs = (details?: SaveFileDetails) => {
+  if (!editor.value) return
+  if (details?.broadcastInfo !== 'menu-saveas-bbs') return
+
+  const html = editor.value.getHTML()
+  const bbs = htmlToNgaBBS(html)
+  window.api.saveFileSignal(bbs, undefined, [{ name: 'NGA BBS', extensions: ['bbs'] }])
+}
+
 function IpcCallbackRegister() {
   FileService.OpenFileListeners.set('editor-opencontent', (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
     console.log("reply1")
@@ -119,14 +153,9 @@ function IpcCallbackRegister() {
     editor.value.chain().focus().setImage({ src: imagePath }).run()
   })
 
-  //saving signal from mainprocess
-  FileService.SaveFileListeners.set('editor-savecontent', (details?: SaveFileDetails) => {
-    if (!editor.value) return
-    if (details?.broadcastInfo !== 'menu-savefile') return
-
-    const content = editor.value.getHTML()
-    if (content !== null) window.api.saveFileSignal(content, undefined, [{ name: 'HTML', extensions: ['html'] }])
-  })
+  // saving signal from main process
+  FileService.SaveFileListeners.set('editor-savecontent', handleEditorSave)
+  FileService.SaveFileListeners.set('editor-saveas', handleEditorSaveAs)
 }
 //#endregion
 

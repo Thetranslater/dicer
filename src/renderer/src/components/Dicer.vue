@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref} from 'vue'
 import { useEditorStore } from '../composables/useEditorStore'
 import { Expression, generateDiceTextWithResult } from '../utils/expression'
 
@@ -15,13 +15,13 @@ const inputValue = ref<string>('10')
 const showDropdown = ref(false)
 
 // 当前选中的值（用于显示）
-const selectedValue = computed(() => {
-  const num = parseInt(inputValue.value, 10)
-  if (diceOptions.includes(num)) {
-    return num
-  }
-  return inputValue.value
-})
+// const selectedValue = computed(() => {
+//   const num = parseInt(inputValue.value, 10)
+//   if (diceOptions.includes(num)) {
+//     return num
+//   }
+//   return inputValue.value
+// })
 
 // 处理下拉选择
 function handleSelect(value: number) {

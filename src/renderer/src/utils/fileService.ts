@@ -59,10 +59,10 @@ export class FileService{
 }
 
 export const setupMenuListeners = () => {
-  window.api.openFileChannel((filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => {
+  (window as any).api.openFileChannel((filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => {
     FileService.emitAfterRead(filePath, content, details)
   })
-  window.api.saveFileChannel((details?:SaveFileDetails) => {
+  (window as any).api.saveFileChannel((details?:SaveFileDetails) => {
     FileService.emitBeforeSave(details)
   })
 }

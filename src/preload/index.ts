@@ -1,6 +1,6 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { OpenFileDetails, OpenFileOptions, SaveFileDetails } from '../includes/fileService'
+import { OpenFileDetails, OpenFileOptions, SaveFileDetails } from '../renderer/src/utils/fileService'
 
 type ImageManagerConfig = {
   rootPath: string | null
@@ -34,6 +34,7 @@ const api = {
   openFileSignal: (options?: OpenFileOptions) => ipcRenderer.send('sys:openfile', options),
 
   // Image manager module (module:function)
+  imagesGetFilePath: (file : File) : string => webUtils.getPathForFile(file),
   imagesGetConfig: (): Promise<ImageManagerConfig> => ipcRenderer.invoke('images:get-config'),
   imagesSelectRoot: (): Promise<string | null> => ipcRenderer.invoke('images:select-root'),
   imagesListDir: (directoryPath?: string): Promise<ImageDirResult> => ipcRenderer.invoke('images:list-dir', directoryPath),

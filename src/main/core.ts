@@ -1,7 +1,7 @@
 import { dialog, ipcMain } from 'electron'
 import { readFileSync, statSync, readdirSync } from 'fs'
 import { basename, join } from 'path'
-import type { OpenFileOptions, OpenFileDetails, FSNode } from '../includes/fileService'
+import type { OpenFileOptions, OpenFileDetails, FSNode } from '../renderer/src/utils/fileService'
 import assert from 'assert'
 
 function buildDirectoryNode(directoryPath: string): FSNode {
