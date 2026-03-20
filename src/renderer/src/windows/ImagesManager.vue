@@ -20,6 +20,7 @@ const currentPath = ref<string>('')
 const items = ref<ImageItem[]>([])
 const selectedPaths = ref<string[]>([])
 const dropTargetPath = ref<string | null>(null)
+const dragTargetPaths = ref<string[] | null>(null)
 const dragEnterDepthMap = new Map<string, number>()
 const renamingPath = ref<string | null>(null)
 const renamingName = ref('')
@@ -351,10 +352,10 @@ function onItemDragStart(event: DragEvent, item: ImageItem): void {
   }
 
   const useMulti = selectedPaths.value.length > 1 && selectedPaths.value.includes(item.path)
-  const dragSources = useMulti ? selectedPaths.value : [item.path]
+  dragTargetPaths.value = useMulti ? selectedPaths.value : [item.path]
 
-  event.dataTransfer?.setData('application/x-images-item-paths', JSON.stringify(dragSources))
-  event.dataTransfer?.setData('text/plain', dragSources.join('\n'))
+  event.dataTransfer?.setData('application/x-images-item-paths', JSON.stringify(dragTargetPaths.value))
+  event.dataTransfer?.setData('text/plain', dragTargetPaths.value.join('\n'))
   if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move'
 }
 function getDropTargetDir(item: ImageItem): string | null {
@@ -396,7 +397,7 @@ function onItemDragLeave(event: DragEvent, item: ImageItem): void {
 }
 async function onItemDrop(event: DragEvent, item: ImageItem): Promise<void> {
   const dropDir = getDropTargetDir(item)
-  if (!dropDir) return
+  if (!dropDir || dragTargetPaths.value?.includes(dropDir)) return
   event.preventDefault()
   dragEnterDepthMap.delete(item.path)
   dropTargetPath.value = null
@@ -592,7 +593,7 @@ watch(dropTargetPath, (next, prev) => {
 
       <div v-else class="item-grid">
         <div v-for="item in sortedItems" :key="item.path" class="item-card"
-          :class="{ selected: isPathSelected(item.path), 'drop-target': dropTargetPath === item.path }"
+          :class="{ selected: isPathSelected(item.path), 'drop-target': dropTargetPath === item.path && !dragTargetPaths?.includes(item.path) }"
           :draggable="renamingPath !== item.path && !item.isParentNav" @click="onItemClick($event, item)"
           @dblclick="openItem(item)" @dragstart="onItemDragStart($event, item)" @dragenter="onItemDragEnter($event, item)"
           @dragover.prevent.stop="onItemDragOver($event, item)" @dragleave="onItemDragLeave($event, item)"

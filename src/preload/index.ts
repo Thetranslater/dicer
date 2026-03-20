@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
-import { OpenFileDetails, OpenFileOptions, SaveFileDetails } from '../renderer/src/utils/fileService'
 
 type ImageManagerConfig = {
   rootPath: string | null
@@ -19,24 +18,44 @@ type ImageDirResult = {
   items: ImageItem[]
 }
 
+type ImageAttachmentMappingItem = {
+  imagePath: string
+  attachmentUrl: string
+}
+
+type ImageAttachmentMappingsResult = {
+  rootPath: string | null
+  items: ImageAttachmentMappingItem[]
+}
+
 // Custom APIs for renderer
 const api = {
   // core
-  saveFileChannel: (callback: (details?:SaveFileDetails) => void) => {
+  saveFileChannel: (callback: (details?) => void) => {
     ipcRenderer.on('sys:savefilec', (_event, details) => callback(details))
   },
-  saveFileSignal: (content: string, defaultPath?: string, filters?: { name: string; extensions: string[] }[]) =>
-    ipcRenderer.invoke('sys:savefile', content, defaultPath, filters),
-
-  openFileChannel: (callback: (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => void) => {
+  saveFileSignal: (content: string | Buffer, options?) =>
+    ipcRenderer.send('sys:savefile', content, options),
+  openFileChannel: (callback: (filePath: string | string[], content?: string | string[], details?) => void) => {
     ipcRenderer.on('sys:openfilec', (_event, filePath, content, details) => callback(filePath, content, details))
   },
-  openFileSignal: (options?: OpenFileOptions) => ipcRenderer.send('sys:openfile', options),
+  openFileSignal: (options?) => ipcRenderer.send('sys:openfile', options),
+  //core:config
+  getConfig: (moduleName : string) => ipcRenderer.invoke('sys:getconfig',moduleName),
+  onConfig:(callback: (projectConfig)=>void) =>{
+    ipcRenderer.on('sys:onconfig', (_event, projectConfig)=>callback(projectConfig))
+  },
 
   // Image manager module (module:function)
   imagesGetFilePath: (file : File) : string => webUtils.getPathForFile(file),
   imagesGetConfig: (): Promise<ImageManagerConfig> => ipcRenderer.invoke('images:get-config'),
   imagesSelectRoot: (): Promise<string | null> => ipcRenderer.invoke('images:select-root'),
+  imagesSetRoot: (rootPath: string): Promise<string> => ipcRenderer.invoke('images:set-root', rootPath),
+  imagesGetAttachmentMappings: (): Promise<ImageAttachmentMappingsResult> =>
+    ipcRenderer.invoke('images:get-attachment-mappings'),
+  imagesSaveAttachmentMappings: (mappings: Record<string, string>): Promise<{ savedCount: number }> =>
+    ipcRenderer.invoke('images:save-attachment-mappings', mappings),
+  //check-ListDir
   imagesListDir: (directoryPath?: string): Promise<ImageDirResult> => ipcRenderer.invoke('images:list-dir', directoryPath),
   imagesCreateFolder: (parentPath: string, folderName?: string): Promise<string> =>
     ipcRenderer.invoke('images:create-folder', parentPath, folderName),

@@ -5,7 +5,11 @@ export type FSNode = {
 
 //SaveFile
 export type SaveFileOptions = {
+  path?:string
   broadcastInfo?:string
+  isBinary?:Boolean
+  encoding?:string
+  dialogfilters?: {name: string, extensions: string[]}[]
   dev?:{
     source?:string
     message?:string
@@ -14,6 +18,7 @@ export type SaveFileOptions = {
 
 export type SaveFileDetails = {
   broadcastInfo?:string
+  isDialogCanceled?:Boolean
   dev?:{
     source?:string
     message?:string
@@ -59,10 +64,10 @@ export class FileService{
 }
 
 export const setupMenuListeners = () => {
-  (window as any).api.openFileChannel((filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => {
+  window.api.openFileChannel((filePath: string | string[], content?: string | string[], details? : OpenFileDetails) => {
     FileService.emitAfterRead(filePath, content, details)
   })
-  (window as any).api.saveFileChannel((details?:SaveFileDetails) => {
+  window.api.saveFileChannel((details?:SaveFileDetails) => {
     FileService.emitBeforeSave(details)
   })
 }

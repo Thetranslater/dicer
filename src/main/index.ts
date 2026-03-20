@@ -1,6 +1,5 @@
-import { app, shell, BrowserWindow, ipcMain, dialog, Menu, protocol } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, Menu, protocol } from 'electron'
 import { join } from 'path'
-import { readFileSync, writeFileSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 // import { net } from 'electron'
@@ -9,17 +8,27 @@ import icon from '../../resources/icon.png?asset'
 import { windowManager} from './windowManager'
 import {openFile, registerCoreIpcHandlers} from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
+import { OpenFileOptions } from '../renderer/src/utils/fileService'
 
 // 注册本地文件协议
 function registerLocalProtocol(): void {
-  protocol.handle('app', (request) => {
+  protocol.handle('app', async (request) => {
     let filePath = request.url.replace(/^app:\/\//, '')
     filePath = decodeURIComponent(filePath)
     // 还原 Windows 盘符中被浏览器去掉的冒号
     // 例如 C/User/... -> C:/Users/...
     filePath = filePath.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
-
-    return new Response(readFileSync(filePath))
+    const options : OpenFileOptions = {
+      path : [filePath],
+      behavior : 'content',
+      dialogProperties : ['openFile'],
+      dev:{
+        source:'app protocol request',
+        message: 'app protocol request'
+      }
+    }
+    const result = await openFile(options)
+    return new Response(result[1])
   })
 }
 
@@ -186,6 +195,18 @@ function createWindow(): void {
           }
         }
       ]
+    },
+    {
+      label: 'Settings',
+      submenu: [
+        {
+          label: 'Open Settings',
+          accelerator: 'CmdOrCtrl+,',
+          click: () => {
+            createSettingsWindow()
+          }
+        }
+      ]
     }
   ]
 
@@ -259,20 +280,6 @@ app.on('window-all-closed', () => {
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and require them here.
 
-// IPC 处理程序
-ipcMain.handle('sys:savefile', async (_event, content: string, defaultPath?: string, filters?: { name: string; extensions: string[] }[]) => {
-  const result = await dialog.showSaveDialog({
-    defaultPath: defaultPath,
-    filters: filters || [{ name: 'All Files', extensions: ['*'] }]
-  })
-
-  if (!result.canceled && result.filePath) {
-    writeFileSync(result.filePath, content, 'utf-8')
-    return result.filePath
-  }
-  return null
-})
-
 // 创建图像管理窗口
 function createImagesWindow(): void {
   // 如果窗口已存在，则聚焦并返回
@@ -289,6 +296,23 @@ function createImagesWindow(): void {
     height: 600,
     title: '图像管理',
     htmlFile: join(__dirname, '../renderer/images.html')
+  })
+}
+
+function createSettingsWindow(): void {
+  if (windowManager.has('settings')) {
+    const existingWindow = windowManager.get('settings')
+    if (existingWindow && !existingWindow.isDestroyed()) {
+      existingWindow.focus()
+      return
+    }
+  }
+
+  windowManager.createWindow('settings', {
+    width: 980,
+    height: 680,
+    title: 'Settings',
+    htmlFile: join(__dirname, '../renderer/settings.html')
   })
 }
 

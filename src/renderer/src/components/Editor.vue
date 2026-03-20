@@ -12,7 +12,7 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import { FileService, OpenFileOptions, OpenFileDetails, SaveFileDetails } from '../utils/fileService'
+import { FileService, OpenFileOptions, OpenFileDetails, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
 import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
@@ -99,24 +99,48 @@ const handleEditorSave = (details?: SaveFileDetails) => {
   if (!editor.value) return
   if (details?.broadcastInfo !== 'menu-savefile') return
 
-  const content = editor.value.getJSON()
-  console.log(content)
-  // if (content !== null) {
-  //   window.api.saveFileSignal(
-  //     JSON.stringify(content, null, 2),
-  //     undefined,
-  //     [{ name: 'JSON', extensions: ['json'] }]
-  //   )
-  // }
+  const options: SaveFileOptions = {
+    broadcastInfo: 'menu-savefile',
+    isBinary: false,
+    encoding: 'utf-8',
+    dialogfilters: [
+      { name: 'HTML', extensions: ['html', 'htm'] }
+    ],
+    dev: {
+      source: 'menu-save',
+      message: '菜单保存，返回编辑器保存的HTML内容'
+    }
+  }
+
+  const content = editor.value.getHTML()
+  if (content !== null) {
+    window.api.saveFileSignal(
+      content,
+      options
+    )
+  }
 }
 
 const handleEditorSaveAs = (details?: SaveFileDetails) => {
   if (!editor.value) return
   if (details?.broadcastInfo !== 'menu-saveas-bbs') return
 
+  const options: SaveFileOptions = {
+    broadcastInfo: 'menu-savefileas',
+    isBinary: false,
+    encoding: 'utf-8',
+    dialogfilters: [
+      { name: 'NGA BBS', extensions: ['bbs'] }
+    ],
+    dev: {
+      source: 'menu-saveas',
+      message: '菜单另存为，返回编辑器保存的bbs code内容'
+    }
+  }
+
   const html = editor.value.getHTML()
   const bbs = htmlToNgaBBS(html)
-  window.api.saveFileSignal(bbs, undefined, [{ name: 'NGA BBS', extensions: ['bbs'] }])
+  window.api.saveFileSignal(bbs, options)
 }
 
 function IpcCallbackRegister() {
@@ -142,7 +166,6 @@ function IpcCallbackRegister() {
     //dev log
     console.log(details.dev)
   })
-
   //image insertion handler
   FileService.OpenFileListeners.set('editor-openimage', (filePath: string | string[], _content, details?: OpenFileDetails) => {
     console.log('reply2')
@@ -152,7 +175,6 @@ function IpcCallbackRegister() {
     const imagePath = `app://${filePath}`
     editor.value.chain().focus().setImage({ src: imagePath }).run()
   })
-
   // saving signal from main process
   FileService.SaveFileListeners.set('editor-savecontent', handleEditorSave)
   FileService.SaveFileListeners.set('editor-saveas', handleEditorSaveAs)

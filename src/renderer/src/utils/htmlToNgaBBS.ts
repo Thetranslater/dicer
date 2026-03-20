@@ -78,13 +78,17 @@ function serializeDetails(el: HTMLElement): string {
   const summaryEl = Array.from(el.children).find(
     (child) => child.tagName.toLowerCase() === 'summary'
   ) as HTMLElement | undefined
-  const summary = summaryEl ? serializeChildren(summaryEl).trim() : 'Details'
+  const summary = summaryEl ? serializeChildren(summaryEl).trim() : ''
 
   const content = Array.from(el.childNodes)
     .filter((child) => child !== summaryEl)
     .map(serializeNode)
     .join('')
     .trim()
+
+  if (!summary) {
+    return `[collapse]\n${content}\n[/collapse]\n\n`
+  }
 
   return `[collapse=${summary}]\n${content}\n[/collapse]\n\n`
 }

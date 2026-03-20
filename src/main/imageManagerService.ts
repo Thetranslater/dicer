@@ -18,6 +18,7 @@ const IMAGE_MANAGER_CONFIG_NAME = 'image-manager.config.json'
 
 type ImageManagerConfig = {
   rootPath: string | null
+  attachmentMappings: Record<string, string>
 }
 
 type ImageItem = {
@@ -27,24 +28,63 @@ type ImageItem = {
   size: number
 }
 
+type ImageAttachmentMappingItem = {
+  imagePath: string
+  attachmentUrl: string
+}
+
+type ImageAttachmentMappingsResult = {
+  rootPath: string | null
+  items: ImageAttachmentMappingItem[]
+}
+
 function getConfigPath(): string {
   return join(app.getPath('userData'), IMAGE_MANAGER_CONFIG_NAME)
+}
+
+function toPosixPath(path: string): string {
+  return path.replace(/\\/g, '/')
+}
+
+function normalizeRelativePath(path: string): string {
+  return toPosixPath(path).replace(/^\/+/, '').replace(/\/+/g, '/').trim()
 }
 
 async function readConfig(): Promise<ImageManagerConfig> {
   const filePath = getConfigPath()
   if (!existsSync(filePath)) {
-    return { rootPath: null }
+    return {
+      rootPath: null,
+      attachmentMappings: {}
+    }
   }
 
   try {
     const raw = await readFile(filePath, 'utf-8')
     const parsed = JSON.parse(raw) as Partial<ImageManagerConfig>
+
+    const rawMappings =
+      parsed.attachmentMappings && typeof parsed.attachmentMappings === 'object'
+        ? parsed.attachmentMappings
+        : {}
+
+    const attachmentMappings: Record<string, string> = {}
+    for (const [key, value] of Object.entries(rawMappings)) {
+      if (typeof value !== 'string') continue
+      const normalizedKey = normalizeRelativePath(key)
+      if (!normalizedKey) continue
+      attachmentMappings[normalizedKey] = value
+    }
+
     return {
-      rootPath: parsed.rootPath ? resolve(parsed.rootPath) : null
+      rootPath: parsed.rootPath ? resolve(parsed.rootPath) : null,
+      attachmentMappings
     }
   } catch {
-    return { rootPath: null }
+    return {
+      rootPath: null,
+      attachmentMappings: {}
+    }
   }
 }
 
@@ -124,6 +164,39 @@ async function toImageItems(directoryPath: string): Promise<ImageItem[]> {
   return rawItems.filter((item): item is ImageItem => item !== null)
 }
 
+async function collectImageRelativePaths(rootPath: string, currentPath = rootPath): Promise<string[]> {
+  let entries
+  try {
+    entries = await readdir(currentPath, { withFileTypes: true })
+  } catch {
+    return []
+  }
+
+  const result: string[] = []
+
+  for (const entry of entries) {
+    const fullPath = join(currentPath, entry.name)
+
+    if (entry.isDirectory()) {
+      const childPaths = await collectImageRelativePaths(rootPath, fullPath)
+      result.push(...childPaths)
+      continue
+    }
+
+    if (!entry.isFile()) continue
+
+    const extension = extname(entry.name).toLowerCase()
+    if (!IMAGE_EXTENSIONS.has(extension)) continue
+
+    const rel = normalizeRelativePath(relative(rootPath, fullPath))
+    if (rel) {
+      result.push(rel)
+    }
+  }
+
+  return result
+}
+
 async function getUniquePath(targetDir: string, fileName: string): Promise<string> {
   const ext = extname(fileName)
   const base = basename(fileName, ext)
@@ -175,8 +248,72 @@ export function registerImageManagerIpcHandlers(): void {
     }
 
     const rootPath = resolve(result.filePaths[0])
-    await writeConfig({ rootPath })
+    const config = await readConfig()
+    await writeConfig({ ...config, rootPath })
     return rootPath
+  })
+
+  ipcMain.handle('images:set-root', async (_event, nextRootPath: string) => {
+    const resolvedPath = resolve(nextRootPath)
+    if (!existsSync(resolvedPath)) {
+      throw new Error('Selected root directory does not exist')
+    }
+
+    const rootStat = await stat(resolvedPath)
+    if (!rootStat.isDirectory()) {
+      throw new Error('Selected root path is not a directory')
+    }
+
+    const config = await readConfig()
+    await writeConfig({ ...config, rootPath: resolvedPath })
+    return resolvedPath
+  })
+
+  ipcMain.handle('images:get-attachment-mappings', async (): Promise<ImageAttachmentMappingsResult> => {
+    const config = await readConfig()
+    const rootPath = config.rootPath && existsSync(config.rootPath) ? resolve(config.rootPath) : null
+
+    if (!rootPath) {
+      return { rootPath: null, items: [] }
+    }
+
+    const imagePaths = await collectImageRelativePaths(rootPath)
+    imagePaths.sort((a, b) => a.localeCompare(b, 'en-US'))
+
+    const items = imagePaths.map((imagePath) => ({
+      imagePath,
+      attachmentUrl: config.attachmentMappings[imagePath] ?? ''
+    }))
+
+    return {
+      rootPath,
+      items
+    }
+  })
+
+  ipcMain.handle('images:save-attachment-mappings', async (_event, mappings: Record<string, string>) => {
+    const config = await readConfig()
+    const nextMappings: Record<string, string> = {}
+
+    for (const [imagePath, url] of Object.entries(mappings ?? {})) {
+      const normalizedPath = normalizeRelativePath(imagePath)
+      if (!normalizedPath) continue
+      if (typeof url !== 'string') continue
+
+      const trimmedUrl = url.trim()
+      if (!trimmedUrl) continue
+
+      nextMappings[normalizedPath] = trimmedUrl
+    }
+
+    await writeConfig({
+      ...config,
+      attachmentMappings: nextMappings
+    })
+
+    return {
+      savedCount: Object.keys(nextMappings).length
+    }
   })
 
   ipcMain.handle('images:list-dir', async (_event, directoryPath?: string) => {

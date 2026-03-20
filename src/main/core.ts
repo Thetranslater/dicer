@@ -1,8 +1,11 @@
 import { dialog, ipcMain } from 'electron'
-import { readFileSync, statSync, readdirSync } from 'fs'
-import { basename, join } from 'path'
-import type { OpenFileOptions, OpenFileDetails, FSNode } from '../renderer/src/utils/fileService'
+import { readFileSync, statSync, readdirSync, writeFileSync} from 'fs'
+import { basename, join, extname } from 'path'
+import type { OpenFileOptions, OpenFileDetails, FSNode, SaveFileOptions, SaveFileDetails } from '../renderer/src/utils/fileService'
 import assert from 'assert'
+
+import { configManager } from './configManager'
+import { broadcast } from './windowManager'
 
 function buildDirectoryNode(directoryPath: string): FSNode {
   const children: FSNode[] = []
@@ -31,6 +34,8 @@ function buildDirectoryNode(directoryPath: string): FSNode {
 }
 
 export async function openFile(options?: OpenFileOptions): Promise<[string | string[], any, OpenFileDetails]> {
+  const TEXT_FILE_EXT = ['.txt', '.md', '.html', '.htm', '.json']
+  
   let path: string[] = []
   let content: any[] = []
   let details: OpenFileDetails = {}
@@ -75,7 +80,11 @@ export async function openFile(options?: OpenFileOptions): Promise<[string | str
         // Keep path only and do not read file content.
         content.push(null)
       } else {
-        const fileContent = readFileSync(value, 'utf-8')
+        let encoding : BufferEncoding | undefined = undefined
+        const extension = extname(value)
+        if (TEXT_FILE_EXT.includes(extension)) 
+          encoding = 'utf-8' 
+        const fileContent = readFileSync(value, encoding)
         content.push(fileContent)
       }
       return
@@ -98,9 +107,52 @@ export async function openFile(options?: OpenFileOptions): Promise<[string | str
   return [rpath, rcontent, details]
 }
 
+export async function saveFile(content :string | Buffer, options?: SaveFileOptions) {
+  let details : SaveFileDetails = {}
+  if (options?.dev?.source === undefined) {
+    details.dev = {
+      source: 'unknown',
+      message: 'no options provided, can not deduce the source; '
+    }
+  } else {
+    details.dev = {
+      source: options.dev.source,
+      message: options.dev.message
+    }
+  }
+
+  if (options?.path){
+    if(options.isBinary !== undefined)
+      if((typeof content !== 'string' && !(options.isBinary)) || (typeof content === 'string' && options.isBinary))  {
+        throw new Error('文件格式与保存内容不匹配')
+      }
+    writeFileSync(options.path, content)
+    return details
+  }
+  const selected = await dialog.showSaveDialog({
+    filters : options?.dialogfilters
+  })
+
+  if(!selected.canceled){
+    writeFileSync(selected.filePath, content)
+  }
+  else {
+    details.dev.message += 'dialog canceled; '
+  }
+  details.isDialogCanceled = selected.canceled
+  return details
+}
+
 export function registerCoreIpcHandlers() : void {
     ipcMain.on('sys:openfile', async (event, options)=>{
-        const result = await openFile(options)
-        event.reply('sys:openfilec', result[0], result[1], result[2])
+      const result = await openFile(options)
+      event.reply('sys:openfilec', result[0], result[1], result[2])
+    })
+    ipcMain.on('sys:savefile', async (event, content, options)=>{
+      const result = await saveFile(content, options)
+      // event.reply('sys:savefilec', result)
+    })
+    ipcMain.handle('sys:getconfig', (event, moduleName : string) => {
+      return configManager.get(moduleName)
     })
 }
