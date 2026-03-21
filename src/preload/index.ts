@@ -47,7 +47,12 @@ const api = {
   //core:config
   getConfig: (moduleName: string): Promise<any> => ipcRenderer.invoke('sys:getconfig', moduleName),
   getProjectConfig: (): Promise<ProjectConfig> => ipcRenderer.invoke('sys:getprojectconfig'),
-  setConfig: (moduleName: string, configJson: any): Promise<any> => ipcRenderer.invoke('sys:setconfig', moduleName, configJson),
+  loadProjectConfig: (configJson: Record<string, any>): Promise<ProjectConfig> =>
+    ipcRenderer.invoke('sys:loadprojectconfig', configJson),
+  setConfig: (moduleName: string, configJson: unknown): Promise<any> =>
+    ipcRenderer.invoke('sys:setconfig', moduleName, configJson),
+  deleteConfig: (moduleName: string): Promise<boolean> =>
+    ipcRenderer.invoke('sys:deleteconfig', moduleName),
   onConfig: (callback: (projectConfig: ProjectConfig) => void) => {
     ipcRenderer.on('sys:onconfig', (_event, projectConfig)=>callback(projectConfig))
   },

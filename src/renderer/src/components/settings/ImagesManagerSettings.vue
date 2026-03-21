@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { FileService, type OpenFileDetails, type OpenFileOptions, type SaveFileOptions } from '../../utils/fileService'
+import { FileService, type OpenFileOptions } from '../../utils/fileService'
 
 type ImageAttachmentMappingItem = {
   imagePath: string
@@ -52,47 +52,14 @@ function buildSavePayload(): Record<string, string> {
   return payload
 }
 
-function getDesktopFilePath(fileName: string): string | null {
-  const env = window.electron.process.env
-  const platform = window.electron.process.platform
-  const home =
-    env.USERPROFILE ||
-    ((env.HOMEDRIVE && env.HOMEPATH) ? `${env.HOMEDRIVE}${env.HOMEPATH}` : undefined) ||
-    env.HOME
-
-  if (!home) return null
-
-  const sep = platform === 'win32' ? '\\' : '/'
-  return `${home}${sep}Desktop${sep}${fileName}`
-}
-
 async function saveSettings(): Promise<void> {
   saving.value = true
   errorMessage.value = ''
   infoMessage.value = ''
   try {
-    const payload = {
-      rootPath: rootPath.value,
-      attachmentMappings: buildSavePayload()
-    }
-    const json = JSON.stringify(payload, null, 2)
-    const desktopFilePath = getDesktopFilePath('image-manager-settings.json')
-    const options: SaveFileOptions = {
-      path: desktopFilePath ?? undefined,
-      broadcastInfo: 'settings-images-save-config',
-      isBinary: false,
-      encoding: 'utf-8',
-      dialogfilters: [{ name: 'JSON', extensions: ['json'] }],
-      dev: {
-        source: 'settings-images-saveMappings',
-        message: 'Save full image manager settings as JSON'
-      }
-    }
-
-    window.api.saveFileSignal(json, options)
-    infoMessage.value = desktopFilePath
-      ? `Settings JSON saved to: ${desktopFilePath}`
-      : 'Desktop path not found. Save request sent with dialog fallback.'
+    const saved = await window.api.imagesSaveAttachmentMappings(buildSavePayload())
+    await loadMappings()
+    infoMessage.value = `Saved ${saved.savedCount} mapping(s) to config manager.`
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -100,7 +67,7 @@ async function saveSettings(): Promise<void> {
   }
 }
 
-function chooseRootDirectory(): void {
+async function chooseRootDirectory() {
   errorMessage.value = ''
   infoMessage.value = ''
 
@@ -115,33 +82,26 @@ function chooseRootDirectory(): void {
     }
   }
 
-  window.api.openFileSignal(options)
+  const result = await window.api.openFileSignal(options)
+  const selectedPath = Array.isArray(result[0]) ? result[0][0] : result[0]
+  if (!selectedPath) return
+
+  loading.value = true
+  errorMessage.value = ''
+  infoMessage.value = ''
+  try {
+    const savedRootPath = await window.api.imagesSetRoot(selectedPath)
+    rootPath.value = normalizePath(savedRootPath)
+    await loadMappings()
+    infoMessage.value = 'Image root path has been updated.'
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
 }
 
 function registerIpcCallbacks(): void {
-  FileService.OpenFileListeners.set(
-    ROOT_PICKER_CALLBACK_KEY,
-    async (filePath: string | string[], _content, details?: OpenFileDetails) => {
-      if (details?.broadcastInfo !== 'settings-images-choose-root' || details?.isDialogCanceled) return
-
-      const selectedPath = Array.isArray(filePath) ? filePath[0] : filePath
-      if (!selectedPath) return
-
-      loading.value = true
-      errorMessage.value = ''
-      infoMessage.value = ''
-      try {
-        const savedRootPath = await window.api.imagesSetRoot(selectedPath)
-        rootPath.value = normalizePath(savedRootPath)
-        await loadMappings()
-        infoMessage.value = 'Image root path has been updated.'
-      } catch (error) {
-        errorMessage.value = toErrorMessage(error)
-      } finally {
-        loading.value = false
-      }
-    }
-  )
 }
 
 onMounted(() => {

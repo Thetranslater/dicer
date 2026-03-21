@@ -1,25 +1,18 @@
-﻿import { existsSync } from 'fs'
-import { mkdir, readFile, writeFile } from 'fs/promises'
+import { mkdirSync, writeFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 
-export interface ProjectModuleConfig {
-  projectPath: string
-  configPath: string
-  createdAt: string
-  updatedAt: string
-}
+export type ProjectConfig = Record<string, any>
 
-export interface ProjectConfig {
-  [module: string]: any
-}
-
-const PROJECT_CONFIG_DIR = '.dicer'
 const PROJECT_CONFIG_FILE = 'project.config.json'
+
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
 
 class ConfigManager {
   private static instance: ConfigManager
-  private configs: Map<string, any> = new Map()
-  private projectConfigPath: string | null = null
+  private config: ProjectConfig = {}
+  private loaded = false
 
   private constructor() {}
 
@@ -30,175 +23,108 @@ class ConfigManager {
     return ConfigManager.instance
   }
 
-  private nowIso(): string {
-    return new Date().toISOString()
+  private normalizePath(pathValue: string): string {
+    return pathValue.replace(/\\/g, '/')
   }
 
-  private resolveProjectConfigPath(projectPath: string): string {
-    return join(resolve(projectPath), PROJECT_CONFIG_DIR, PROJECT_CONFIG_FILE)
+  private resolvePath(pathValue: string): string {
+    return this.normalizePath(resolve(pathValue))
   }
 
-  private toProjectConfigObject(): ProjectConfig {
-    const projectConfig: ProjectConfig = {}
-    for (const [moduleName, config] of this.configs) {
-      projectConfig[moduleName] = config
+  private toRecord(configJson: object): Record<string, any> {
+    if (!isPlainObject(configJson)) {
+      throw new Error('config must be a JSON object')
     }
-    return projectConfig
+    return configJson
   }
 
-  private normalizeProjectModule(
-    rawProject: Partial<ProjectModuleConfig> | undefined,
-    expectedProjectPath?: string
-  ): ProjectModuleConfig {
-    const existingProject = (this.configs.get('project') ?? {}) as Partial<ProjectModuleConfig>
-    const fixedProjectPath = expectedProjectPath
-      ? resolve(expectedProjectPath)
-      : resolve(rawProject?.projectPath ?? existingProject.projectPath ?? '')
+  private resolvePersistPath(): string {
+    const project = isPlainObject(this.get('project')) ? this.get('project') : {}
 
-    if (!fixedProjectPath) {
-      throw new Error('Project path is required')
+    if (typeof project.configPath === 'string' && project.configPath.trim().length > 0) {
+      return this.resolvePath(project.configPath)
     }
 
-    if (existingProject.projectPath && resolve(existingProject.projectPath) !== fixedProjectPath) {
-      throw new Error('projectPath is immutable for current project')
+    const projectBase =
+      (typeof project.projectPath === 'string' && project.projectPath.trim().length > 0
+        ? project.projectPath
+        : typeof project.root === 'string' && project.root.trim().length > 0
+          ? project.root
+          : '')
+
+    if (!projectBase) {
+      throw new Error('project config path is not available')
     }
 
-    if (rawProject?.projectPath && resolve(rawProject.projectPath) !== fixedProjectPath) {
-      throw new Error('projectPath does not match selected project directory')
+    const configPath = this.normalizePath(join(this.resolvePath(projectBase), PROJECT_CONFIG_FILE))
+    this.config.project = {
+      ...project,
+      configPath
     }
 
-    const configPath = this.projectConfigPath
-      ? resolve(this.projectConfigPath)
-      : this.resolveProjectConfigPath(fixedProjectPath)
-
-    const createdAt = existingProject.createdAt ?? rawProject?.createdAt ?? this.nowIso()
-
-    return {
-      projectPath: fixedProjectPath,
-      configPath,
-      createdAt,
-      updatedAt: this.nowIso()
-    }
+    return configPath
   }
 
-  private async persist(): Promise<void> {
-    if (!this.projectConfigPath) {
-      throw new Error('Project config path is not initialized')
-    }
-
-    const projectModule = this.normalizeProjectModule(this.get('project') as Partial<ProjectModuleConfig>)
-    this.configs.set('project', projectModule)
-
-    await mkdir(dirname(this.projectConfigPath), { recursive: true })
-    await writeFile(this.projectConfigPath, JSON.stringify(this.toProjectConfigObject(), null, 2), 'utf-8')
+  private persistToDisk(): void {
+    const filePath = this.resolvePersistPath()
+    mkdirSync(dirname(filePath), { recursive: true })
+    writeFileSync(filePath, JSON.stringify(this.getProjectConfig(), null, 2), 'utf-8')
   }
 
-  private assignFromProjectConfig(projectConfig: ProjectConfig, expectedProjectPath?: string): void {
-    this.configs.clear()
+  load(configJson: object): ProjectConfig {
+    const record = this.toRecord(configJson)
+    this.config = record
+    this.loaded = true
+    return this.getProjectConfig()
+  }
 
-    for (const [moduleName, moduleConfig] of Object.entries(projectConfig ?? {})) {
-      if (moduleName === 'project') continue
-      this.configs.set(moduleName, moduleConfig)
+  merge(configJson: object): ProjectConfig {
+    const record = this.toRecord(configJson)
+    for (const [moduleName, moduleConfig] of Object.entries(record)) {
+      this.set(moduleName, moduleConfig)
     }
 
-    const projectModule = this.normalizeProjectModule(
-      (projectConfig?.project ?? {}) as Partial<ProjectModuleConfig>,
-      expectedProjectPath
-    )
+    return this.getProjectConfig()
+  }
 
-    this.configs.set('project', projectModule)
+  clear(): void {
+    this.config = {}
+    this.loaded = false
   }
 
   isLoaded(): boolean {
-    return this.projectConfigPath !== null && this.configs.has('project')
+    return this.loaded && this.has('root')
   }
 
   has(moduleName: string): boolean {
-    return this.configs.has(moduleName)
+    return Object.prototype.hasOwnProperty.call(this.config, moduleName)
   }
 
   get(moduleName: string): any {
-    return this.configs.get(moduleName)
+    if (moduleName === 'project') return {root :this.config['root'], name : this.config['name']}
+    return this.config[moduleName]
   }
 
-  async set(moduleName: string, configJson: any): Promise<any> {
-    if (!this.projectConfigPath) {
-      throw new Error('No project loaded')
-    }
+  set(moduleName: string, configJson: unknown): any {
+    this.config[moduleName] = configJson
 
-    if (moduleName === 'project') {
-      const nextProject = this.normalizeProjectModule(configJson as Partial<ProjectModuleConfig>)
-      this.configs.set('project', nextProject)
-    } else {
-      this.configs.set(moduleName, configJson)
-    }
-
-    await this.persist()
+    this.loaded = true
+    this.persistToDisk()
     return this.get(moduleName)
   }
 
   delete(moduleName: string): boolean {
-    if (moduleName === 'project') {
+    if (!this.has(moduleName)) {
       return false
     }
-    return this.configs.delete(moduleName)
+
+    delete this.config[moduleName]
+    this.loaded = Object.keys(this.config).length > 0
+    return true
   }
 
   getProjectConfig(): ProjectConfig {
-    return this.toProjectConfigObject()
-  }
-
-  async createProject(projectPath: string): Promise<ProjectConfig> {
-    const fixedProjectPath = resolve(projectPath)
-    const configPath = this.resolveProjectConfigPath(fixedProjectPath)
-
-    if (existsSync(configPath)) {
-      throw new Error('Project already exists at selected path')
-    }
-
-    this.projectConfigPath = configPath
-
-    this.assignFromProjectConfig(
-      {
-        project: {
-          projectPath: fixedProjectPath,
-          configPath,
-          createdAt: this.nowIso(),
-          updatedAt: this.nowIso()
-        },
-        editor: {},
-        images: {}
-      },
-      fixedProjectPath
-    )
-
-    await this.persist()
-    return this.getProjectConfig()
-  }
-
-  async openProject(projectPath: string): Promise<ProjectConfig> {
-    const fixedProjectPath = resolve(projectPath)
-    const configPath = this.resolveProjectConfigPath(fixedProjectPath)
-
-    if (!existsSync(configPath)) {
-      throw new Error('Project config file does not exist in selected directory')
-    }
-
-    const raw = await readFile(configPath, 'utf-8')
-    const parsed = JSON.parse(raw) as ProjectConfig
-    const normalizedConfig: ProjectConfig =
-      parsed && typeof parsed.modules === 'object' && parsed.modules !== null
-        ? {
-            ...(parsed.modules as Record<string, any>),
-            project: parsed.project
-          }
-        : parsed
-
-    this.projectConfigPath = configPath
-    this.assignFromProjectConfig(normalizedConfig, fixedProjectPath)
-    await this.persist()
-
-    return this.getProjectConfig()
+    return { ...this.config }
   }
 }
 

@@ -156,34 +156,22 @@ export function registerCoreIpcHandlers(): void {
     return configManager.getProjectConfig()
   })
 
-  ipcMain.handle('sys:setconfig', async (_e, moduleName: string, configJson: any) => {
-    const result = await configManager.set(moduleName, configJson)
+  ipcMain.handle('sys:loadprojectconfig', (_e, configJson: Record<string, any>) => {
+    const projectConfig = configManager.load(configJson)
+    broadcast('sys:onconfig', projectConfig)
+    return projectConfig
+  })
+
+  ipcMain.handle('sys:setconfig', (_e, moduleName: string, configJson: unknown) => {
+    const result = configManager.set(moduleName, configJson)
     broadcast('sys:onconfig', configManager.getProjectConfig())
     return result
   })
 
-  ipcMain.handle('project:pick-directory', async (_e, allowCreate = false) => {
-    const result = await dialog.showOpenDialog({
-      properties: allowCreate ? ['openDirectory', 'createDirectory'] : ['openDirectory']
-    })
-
-    if (result.canceled || result.filePaths.length === 0) {
-      return null
-    }
-
-    return result.filePaths[0]
-  })
-
-  ipcMain.handle('project:open', async (_e, projectPath: string) => {
-    const projectConfig = await configManager.openProject(projectPath)
-    broadcast('sys:onconfig', projectConfig)
-    return projectConfig
-  })
-
-  ipcMain.handle('project:create', async (_e, projectPath: string) => {
-    const projectConfig = await configManager.createProject(projectPath)
-    broadcast('sys:onconfig', projectConfig)
-    return projectConfig
+  ipcMain.handle('sys:deleteconfig', (_e, moduleName: string) => {
+    const deleted = configManager.delete(moduleName)
+    broadcast('sys:onconfig', configManager.getProjectConfig())
+    return deleted
   })
 
   ipcMain.handle('project:is-loaded', () => {

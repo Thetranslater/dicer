@@ -1,7 +1,10 @@
-﻿import { app, dialog, ipcMain } from 'electron'
-import { copyFile, mkdir, readdir, readFile, rename, stat, writeFile } from 'fs/promises'
+import { dialog, ipcMain } from 'electron'
+import { copyFile, mkdir, readdir, rename, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path'
+
+import { configManager } from './configManager'
+import { broadcast } from './windowManager'
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg',
@@ -14,7 +17,7 @@ const IMAGE_EXTENSIONS = new Set([
   '.avif'
 ])
 
-const IMAGE_MANAGER_CONFIG_NAME = 'image-manager.config.json'
+const IMAGE_CONFIG_MODULE = 'image'
 
 type ImageManagerConfig = {
   rootPath: string | null
@@ -38,10 +41,6 @@ type ImageAttachmentMappingsResult = {
   items: ImageAttachmentMappingItem[]
 }
 
-function getConfigPath(): string {
-  return join(app.getPath('userData'), IMAGE_MANAGER_CONFIG_NAME)
-}
-
 function toPosixPath(path: string): string {
   return path.replace(/\\/g, '/')
 }
@@ -50,47 +49,39 @@ function normalizeRelativePath(path: string): string {
   return toPosixPath(path).replace(/^\/+/, '').replace(/\/+/g, '/').trim()
 }
 
+function isPlainObject(value: unknown): value is Record<string, any> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizeConfig(raw: unknown): ImageManagerConfig {
+  const obj = isPlainObject(raw) ? raw : {}
+
+  const rootPath =
+    typeof obj.rootPath === 'string' && obj.rootPath.trim().length > 0
+      ? resolve(obj.rootPath)
+      : null
+
+  const rawMappings = isPlainObject(obj.attachmentMappings) ? obj.attachmentMappings : {}
+  const attachmentMappings: Record<string, string> = {}
+
+  for (const [key, value] of Object.entries(rawMappings)) {
+    if (typeof value !== 'string') continue
+    const normalizedKey = normalizeRelativePath(key)
+    if (!normalizedKey) continue
+    attachmentMappings[normalizedKey] = value
+  }
+
+  return { rootPath, attachmentMappings }
+}
+
 async function readConfig(): Promise<ImageManagerConfig> {
-  const filePath = getConfigPath()
-  if (!existsSync(filePath)) {
-    return {
-      rootPath: null,
-      attachmentMappings: {}
-    }
-  }
-
-  try {
-    const raw = await readFile(filePath, 'utf-8')
-    const parsed = JSON.parse(raw) as Partial<ImageManagerConfig>
-
-    const rawMappings =
-      parsed.attachmentMappings && typeof parsed.attachmentMappings === 'object'
-        ? parsed.attachmentMappings
-        : {}
-
-    const attachmentMappings: Record<string, string> = {}
-    for (const [key, value] of Object.entries(rawMappings)) {
-      if (typeof value !== 'string') continue
-      const normalizedKey = normalizeRelativePath(key)
-      if (!normalizedKey) continue
-      attachmentMappings[normalizedKey] = value
-    }
-
-    return {
-      rootPath: parsed.rootPath ? resolve(parsed.rootPath) : null,
-      attachmentMappings
-    }
-  } catch {
-    return {
-      rootPath: null,
-      attachmentMappings: {}
-    }
-  }
+  return normalizeConfig(configManager.get(IMAGE_CONFIG_MODULE))
 }
 
 async function writeConfig(config: ImageManagerConfig): Promise<void> {
-  const filePath = getConfigPath()
-  await writeFile(filePath, JSON.stringify(config, null, 2), 'utf-8')
+  const normalized = normalizeConfig(config)
+  configManager.set(IMAGE_CONFIG_MODULE, normalized)
+  broadcast('sys:onconfig', configManager.getProjectConfig())
 }
 
 function isPathWithinRoot(rootPath: string, targetPath: string): boolean {
@@ -155,7 +146,6 @@ async function toImageItems(directoryPath: string): Promise<ImageItem[]> {
           size: stats.size
         } satisfies ImageItem
       } catch {
-        // Skip entries that cannot be stat-ed (for example, protected system files).
         return null
       }
     })

@@ -36,11 +36,13 @@ export interface IAPI {
   saveFileChannel: (callback: (details?) => void) => void
   saveFileSignal: (content: string | Buffer, options?) => Promise<any>
   openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => void
-  openFileSignal:(options?) => Pormise<[string | string[], any, any]>
+  openFileSignal: (options?) => Promise<[string | string[], any, any]>
 
   getConfig: (moduleName: string) => Promise<any>
   getProjectConfig: () => Promise<ProjectConfig>
-  setConfig: (moduleName: string, configJson: any) => Promise<any>
+  loadProjectConfig: (configJson: Record<string, any>) => Promise<ProjectConfig>
+  setConfig: (moduleName: string, configJson: unknown) => Promise<any>
+  deleteConfig: (moduleName: string) => Promise<boolean>
   onConfig: (callback: (projectConfig: ProjectConfig) => void) => void
 
   projectIsLoaded: () => Promise<boolean>

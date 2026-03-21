@@ -2,11 +2,6 @@
 import { ref, watch } from 'vue'
 import type { SaveFileOptions, OpenFileOptions, OpenFileDetails } from '@renderer/utils/fileService'
 
-type LauncherProjectConfig = {
-  root: string
-  name: string
-}
-
 const selectedPath = ref('')
 const projectName = ref('default')
 const createRootPath = ref('')
@@ -59,33 +54,7 @@ async function chooseDirectory(exist: boolean): Promise<string | null> {
   return normalizePath(pathValue)
 }
 
-function parseProjectConfig(rawContent: unknown): LauncherProjectConfig | null {
-  if (typeof rawContent !== 'string') return null
-
-  try {
-    const parsed = JSON.parse(rawContent) as Partial<LauncherProjectConfig>
-    if (!parsed || typeof parsed !== 'object') return null
-
-    const parsedName =
-      typeof parsed.name === 'string' && parsed.name.trim().length > 0
-        ? normalizeProjectName(parsed.name)
-        : 'default'
-
-    const parsedRoot =
-      typeof parsed.root === 'string' && parsed.root.trim().length > 0
-        ? normalizePath(parsed.root)
-        : ''
-
-    return {
-      root: parsedRoot,
-      name: parsedName
-    }
-  } catch {
-    return null
-  }
-}
-
-async function readExistingProjectConfig(projectDir: string): Promise<LauncherProjectConfig | null> {
+async function readExistingProjectConfig(projectDir: string): Promise<any> {
   const configPath = `${projectDir}/project.config.json`
   const openConfigOptions: OpenFileOptions = {
     path: [configPath],
@@ -102,13 +71,7 @@ async function readExistingProjectConfig(projectDir: string): Promise<LauncherPr
   const details = configResult[2] as OpenFileDetails | undefined
   if (details?.isDialogCanceled) return null
 
-  const parsed = parseProjectConfig(configResult[1])
-  if (!parsed) return null
-
-  return {
-    root: parsed.root || projectDir,
-    name: parsed.name
-  }
+  return JSON.parse(configResult[1] as string)
 }
 
 async function chooseCreateRootPath(): Promise<void> {
@@ -146,12 +109,13 @@ async function openExistingProject(): Promise<void> {
     createRootPath.value = ''
     selectedPath.value = existingConfig.root
     projectName.value = normalizeProjectName(existingConfig.name)
+    await window.api.loadProjectConfig(existingConfig)
+    loading.value = false
     infoMessage.value = `Project "${projectName.value}" loaded.`
+
+    await window.api.projectReady()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
-    await window.api.projectReady()
   }
 }
 
@@ -166,9 +130,11 @@ async function createProject(): Promise<void> {
     }
 
     const safeName = normalizeProjectName(projectName.value)
-    const projectDir = selectedPath.value
+    projectName.value = safeName
 
-    const projectConfig: LauncherProjectConfig = {
+    const projectDir = `${createRootPath.value}/${safeName}`
+
+    const projectConfig = {
       root: projectDir,
       name: safeName
     }
@@ -185,12 +151,12 @@ async function createProject(): Promise<void> {
     }
 
     await window.api.saveFileSignal(JSON.stringify(projectConfig, null, 2), saveConfigOptions)
+    await window.api.loadProjectConfig(projectConfig)
+    loading.value = false
     infoMessage.value = `Project "${safeName}" created.`
+    await window.api.projectReady()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
-    await window.api.projectReady()
   }
 }
 </script>

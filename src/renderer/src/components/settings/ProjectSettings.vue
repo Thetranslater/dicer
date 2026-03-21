@@ -2,10 +2,8 @@
 import { onMounted, ref } from 'vue'
 
 type ProjectModuleConfig = {
-  projectPath?: string
-  configPath?: string
-  createdAt?: string
-  updatedAt?: string
+  root?: string
+  name?: string
 }
 
 const projectConfig = ref<ProjectModuleConfig | null>(null)
@@ -56,17 +54,11 @@ onMounted(() => {
     </div>
 
     <div v-else class="config-grid">
+      <div class="label">Porject Name</div>
+      <div class="value">{{ projectConfig.name }}</div>
+
       <div class="label">Project Path</div>
-      <div class="value">{{ normalizePath(projectConfig.projectPath) }}</div>
-
-      <div class="label">Config Path</div>
-      <div class="value">{{ normalizePath(projectConfig.configPath) }}</div>
-
-      <div class="label">Created At</div>
-      <div class="value">{{ projectConfig.createdAt ?? '-' }}</div>
-
-      <div class="label">Updated At</div>
-      <div class="value">{{ projectConfig.updatedAt ?? '-' }}</div>
+      <div class="value">{{ normalizePath(projectConfig.root) }}</div>
     </div>
   </section>
 </template>
