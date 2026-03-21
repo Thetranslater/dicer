@@ -5,7 +5,7 @@ import { RouterLink, RouterView } from 'vue-router'
 <template>
   <div class="settings-window">
     <aside class="settings-nav">
-      <RouterLink class="nav-item" to="/program">Application</RouterLink>
+      <RouterLink class="nav-item" to="/project">Project</RouterLink>
       <!-- <RouterLink class="nav-item" to="/editor">Editor</RouterLink> -->
       <RouterLink class="nav-item" to="/images">Images Manager</RouterLink>
     </aside>

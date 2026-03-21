@@ -1,17 +1,58 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, shell, Menu } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 
-export type WindowType = 'editor' | 'images' | 'settings'
+interface BaseWindowOptions {
+  width: number
+  height: number
+  title: string
+  htmlFile: string
+}
 
-interface WindowMeta {
-  type: WindowType
-  window: BrowserWindow
+interface CreateWindowParams {
+  focusIfExists?: boolean
+  overrides?: Partial<BaseWindowOptions>
+}
+
+const MODULE_WINDOW_CONFIG: Record<string, BaseWindowOptions> = {
+  editor :{
+    width: 900,
+    height: 670,
+    title: '',
+    htmlFile: join(__dirname, '../renderer/index.html')
+  },
+  images: {
+    width: 800,
+    height: 600,
+    title: '图像管理',
+    htmlFile: join(__dirname, '../renderer/images.html')
+  },
+  settings: {
+    width: 980,
+    height: 680,
+    title: '设置',
+    htmlFile: join(__dirname, '../renderer/settings.html')
+  },
+  launcher: {
+    width: 620,
+    height: 380,
+    title: '启动器',
+    htmlFile: join(__dirname, '../renderer/project-launcher.html')
+  }
+}
+
+function focusExistingWindow(type: string): BrowserWindow | null {
+  const existingWindow = windowManager.get(type)
+  if (existingWindow && !existingWindow.isDestroyed()) {
+    existingWindow.focus()
+    return existingWindow
+  }
+  return null
 }
 
 class WindowManager {
   private static instance: WindowManager
-  private windows: Map<WindowType, WindowMeta | null> = new Map()
+  private windows: Map<string, BrowserWindow | null> = new Map()
 
   private constructor() {}
 
@@ -22,59 +63,53 @@ class WindowManager {
     return WindowManager.instance
   }
 
-  register(type: WindowType, window: BrowserWindow): void {
-    this.windows.set(type, { type, window })
+  register(type: string, window: BrowserWindow): void {
+    this.windows.set(type, window)
 
     window.on('closed', () => {
       this.windows.set(type, null)
     })
   }
-
-  get(type: WindowType): BrowserWindow | null {
-    const meta = this.windows.get(type)
-    return meta?.window || null
+  get(type: string): BrowserWindow | null {
+    const window = this.windows.get(type)
+    return window ?? null
   }
-
-  has(type: WindowType): boolean {
-    const meta = this.windows.get(type)
-    return meta !== null && meta !== undefined && !meta.window.isDestroyed()
+  has(type: string): boolean {
+    const window = this.windows.get(type)
+    return window !== null && window !== undefined && !window.isDestroyed()
   }
-
-  close(type: WindowType): void {
+  close(type: string): void {
     const window = this.get(type)
     if (window && !window.isDestroyed()) {
       window.close()
     }
   }
-
   closeAll(): void {
     for (const [type] of this.windows) {
       this.close(type)
     }
   }
-
-  getAll() : WindowMeta[] {
-    const metas : WindowMeta[] = []
-    for (const [_, meta] of this.windows) {
-      if (meta && !meta.window.isDestroyed()) {
-        metas.push(meta)
+  getAll() : BrowserWindow[] {
+    const windows : BrowserWindow[] = []
+    for (const [_, window] of this.windows) {
+      if (window && !window.isDestroyed()) {
+        windows.push(window)
       }
     }
-    return metas
+    return windows
   }
-
-  getActiveWindowTypes(): WindowType[] {
-    const activeTypes: WindowType[] = []
-    for (const [type, meta] of this.windows) {
-      if (meta && !meta.window.isDestroyed()) {
+  getActiveWindowTypes(): string[] {
+    const activeTypes: string[] = []
+    for (const [type, window] of this.windows) {
+      if (window && !window.isDestroyed()) {
         activeTypes.push(type)
       }
     }
     return activeTypes
   }
 
-  createWindow(
-    type: WindowType,
+  private _createWindow(
+    type: string,
     options: {
       width?: number
       height?: number
@@ -100,9 +135,14 @@ class WindowManager {
       window.show()
     })
 
+    window.webContents.setWindowOpenHandler((details) => {
+      shell.openExternal(details.url)
+      return { action: 'deny' }
+    })
+
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
       const fileName = htmlFile.split(/[\\/]/).pop() ?? 'index.html'
-      const pageName = ['index.html', 'images.html', 'settings.html'].includes(fileName)
+      const pageName = ['index.html', 'images.html', 'settings.html', 'project-launcher.html'].includes(fileName)
         ? fileName
         : 'index.html'
       const baseUrl = process.env['ELECTRON_RENDERER_URL']
@@ -115,12 +155,41 @@ class WindowManager {
 
     return window
   }
+
+  createWindow(module: string, params: CreateWindowParams = {}): BrowserWindow {
+    const { focusIfExists = true, overrides = {} } = params
+  
+    if (focusIfExists) {
+      const existingWindow = focusExistingWindow(module)
+      if (existingWindow) {
+        return existingWindow
+      }
+    }
+  
+    const windowOptions: BaseWindowOptions = {
+      ...MODULE_WINDOW_CONFIG[module],
+      ...overrides
+    }
+  
+    const window = windowManager._createWindow(module, windowOptions)
+    if (module === 'launcher' && process.platform !== 'darwin') {
+      window.removeMenu()
+      window.setMenuBarVisibility(false)
+      window.setAutoHideMenuBar(true)
+    }
+  
+    return window
+  }
+  setMenu(template){
+    const menu = Menu.buildFromTemplate(template as Electron.MenuItemConstructorOptions[])
+    Menu.setApplicationMenu(menu)
+  }
 }
 
 export function broadcast(channel : string, ...args){
   const windows = windowManager.getAll()
   windows.forEach((meta) => {
-    meta.window.webContents.send(channel, args)
+    meta.webContents.send(channel, ...args)
   })
 }
 

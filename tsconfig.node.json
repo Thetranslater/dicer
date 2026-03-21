@@ -6,7 +6,7 @@
     "src/preload/**/*",
     "src/includes/**/*.ts",
     "src/renderer/src/utils/fileService.ts",
-    "src/renderer/index.d.ts",
+    "src/renderer/index.d.ts"
   ],
   "compilerOptions": {
     "composite": true,

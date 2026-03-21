@@ -1,12 +1,10 @@
-import { app, shell, BrowserWindow, ipcMain, Menu, protocol } from 'electron'
-import { join } from 'path'
-import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import icon from '../../resources/icon.png?asset'
+import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { electronApp, optimizer} from '@electron-toolkit/utils'
 // import { net } from 'electron'
 // import { URL } from 'url'
 
 import { windowManager} from './windowManager'
-import {openFile, registerCoreIpcHandlers} from './core'
+import { openFile, registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 import { OpenFileOptions } from '../renderer/src/utils/fileService'
 
@@ -21,6 +19,7 @@ function registerLocalProtocol(): void {
     const options : OpenFileOptions = {
       path : [filePath],
       behavior : 'content',
+      dialogfilters : [{name : 'img', extensions : ['jpg', 'png', 'jpeg', 'gif', 'bmp', 'svg','tif']}],
       dialogProperties : ['openFile'],
       dev:{
         source:'app protocol request',
@@ -28,7 +27,7 @@ function registerLocalProtocol(): void {
       }
     }
     const result = await openFile(options)
-    return new Response(result[1])
+    return new Response(result[1] as any)
   })
 }
 
@@ -89,30 +88,28 @@ function registerLocalProtocol(): void {
 //   request.end()
 // }
 
-function createWindow(): void {
-  // Create the browser window.
-  const mainWindow = new BrowserWindow({
-    width: 900,
-    height: 670,
-    show: false,
-    autoHideMenuBar: false,
-    ...(process.platform === 'linux' ? { icon } : {}),
-    webPreferences: {
-      preload: join(__dirname, '../preload/index.js'),
-      sandbox: false
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme : 'app',
+    privileges:{
+      standard : true,
+      secure : true,
+      supportFetchAPI : true
     }
-  })
+  }
+])
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow.show()
-  })
+// This method will be called when Electron has finished
+// initialization and is ready to create browser windows.
+// Some APIs can only be used after this event occurs.
+app.whenReady().then(() => {
 
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
-    return { action: 'deny' }
-  })
+  // 注册本地文件协议
+  registerLocalProtocol()
+  registerImageManagerIpcHandlers()
+  registerCoreIpcHandlers()
 
-  // 创建菜单
+  //Menu template
   const template: Electron.MenuItemConstructorOptions[] = [
     {
       label: '文件',
@@ -121,7 +118,7 @@ function createWindow(): void {
           label: '新建',
           accelerator: 'CmdOrCtrl+N',
           click: () => {
-            mainWindow.webContents.send('menu-file-new')
+            windowManager.get('editor')?.webContents.send('menu-file-new')
           }
         },
         {
@@ -143,7 +140,7 @@ function createWindow(): void {
                 if (!result[2].isDialogCanceled){
                   const filePath = result[0]
                   const content = result[1]
-                  mainWindow.webContents.send('sys:openfilec', filePath, content, result[2])
+                  windowManager.get('editor')?.webContents.send('sys:openfilec', filePath, content, result[2])
                 }
               }
               catch (error){
@@ -163,7 +160,7 @@ function createWindow(): void {
                 message:'由菜单触发的保存'
               }
             }
-            mainWindow.webContents.send('sys:savefilec', details)
+            windowManager.get('editor')?.webContents.send('sys:savefilec', details)
           }
         },
         {
@@ -177,7 +174,7 @@ function createWindow(): void {
                 message: 'Save as NGA BBS'
               }
             }
-            mainWindow.webContents.send('sys:savefilec', details)
+            windowManager.get('editor')?.webContents.send('sys:savefilec', details)
           }
         },
         { type: 'separator' },
@@ -191,7 +188,7 @@ function createWindow(): void {
           label: '打开图像管理窗口',
           accelerator: 'CmdOrCtrl+Shift+I',
           click: () => {
-            createImagesWindow()
+            windowManager.createWindow('images')
           }
         }
       ]
@@ -203,47 +200,13 @@ function createWindow(): void {
           label: 'Open Settings',
           accelerator: 'CmdOrCtrl+,',
           click: () => {
-            createSettingsWindow()
+            windowManager.createWindow('settings')
           }
         }
       ]
     }
   ]
 
-  const menu = Menu.buildFromTemplate(template)
-  Menu.setApplicationMenu(menu)
-
-  // HMR for renderer base on electron-vite cli.
-  // Load the remote URL for development or the local html file for production.
-  if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
-  } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
-  }
-
-  // 注册到窗口池
-  windowManager.register('editor', mainWindow)
-}
-
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme : 'app',
-    privileges:{
-      standard : true,
-      secure : true,
-      supportFetchAPI : true
-    }
-  }
-])
-
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.whenReady().then(() => {
-  // 注册本地文件协议
-  registerLocalProtocol()
-  registerImageManagerIpcHandlers()
-  registerCoreIpcHandlers()
 
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
@@ -258,12 +221,14 @@ app.whenReady().then(() => {
   // IPC test
   ipcMain.on('ping', () => console.log('pong'))
 
-  createWindow()
+  windowManager.createWindow('launcher')
+  windowManager.setMenu(template)
+    
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the
     // dock icon is clicked and there are no other windows open.
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) windowManager.createWindow('launcher')
   })
 
 })
@@ -276,43 +241,4 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
-
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and require them here.
-
-// 创建图像管理窗口
-function createImagesWindow(): void {
-  // 如果窗口已存在，则聚焦并返回
-  if (windowManager.has('images')) {
-    const existingWindow = windowManager.get('images')
-    if (existingWindow && !existingWindow.isDestroyed()) {
-      existingWindow.focus()
-      return
-    }
-  }
-
-  windowManager.createWindow('images', {
-    width: 800,
-    height: 600,
-    title: '图像管理',
-    htmlFile: join(__dirname, '../renderer/images.html')
-  })
-}
-
-function createSettingsWindow(): void {
-  if (windowManager.has('settings')) {
-    const existingWindow = windowManager.get('settings')
-    if (existingWindow && !existingWindow.isDestroyed()) {
-      existingWindow.focus()
-      return
-    }
-  }
-
-  windowManager.createWindow('settings', {
-    width: 980,
-    height: 680,
-    title: 'Settings',
-    htmlFile: join(__dirname, '../renderer/settings.html')
-  })
-}
 

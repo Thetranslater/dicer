@@ -28,6 +28,10 @@ type ImageAttachmentMappingsResult = {
   items: ImageAttachmentMappingItem[]
 }
 
+type ProjectConfig = {
+  [module: string]: any
+}
+
 // Custom APIs for renderer
 const api = {
   // core
@@ -35,16 +39,20 @@ const api = {
     ipcRenderer.on('sys:savefilec', (_event, details) => callback(details))
   },
   saveFileSignal: (content: string | Buffer, options?) =>
-    ipcRenderer.send('sys:savefile', content, options),
-  openFileChannel: (callback: (filePath: string | string[], content?: string | string[], details?) => void) => {
+    ipcRenderer.invoke('sys:savefile', content, options),
+  openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => {
     ipcRenderer.on('sys:openfilec', (_event, filePath, content, details) => callback(filePath, content, details))
   },
-  openFileSignal: (options?) => ipcRenderer.send('sys:openfile', options),
+  openFileSignal: (options?) => ipcRenderer.invoke('sys:openfile', options),
   //core:config
-  getConfig: (moduleName : string) => ipcRenderer.invoke('sys:getconfig',moduleName),
-  onConfig:(callback: (projectConfig)=>void) =>{
+  getConfig: (moduleName: string): Promise<any> => ipcRenderer.invoke('sys:getconfig', moduleName),
+  getProjectConfig: (): Promise<ProjectConfig> => ipcRenderer.invoke('sys:getprojectconfig'),
+  setConfig: (moduleName: string, configJson: any): Promise<any> => ipcRenderer.invoke('sys:setconfig', moduleName, configJson),
+  onConfig: (callback: (projectConfig: ProjectConfig) => void) => {
     ipcRenderer.on('sys:onconfig', (_event, projectConfig)=>callback(projectConfig))
   },
+  projectIsLoaded: (): Promise<boolean> => ipcRenderer.invoke('project:is-loaded'),
+  projectReady: (): Promise<void> => ipcRenderer.invoke('project:ready'),
 
   // Image manager module (module:function)
   imagesGetFilePath: (file : File) : string => webUtils.getPathForFile(file),

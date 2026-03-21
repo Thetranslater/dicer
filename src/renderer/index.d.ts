@@ -27,12 +27,24 @@ type ImageAttachmentMappingsResult = {
   items: ImageAttachmentMappingItem[]
 }
 
+type ProjectConfig = {
+  [module: string]: any
+}
+
 export interface IAPI {
   //signal:renderer process to main, channel: main to renderer process
   saveFileChannel: (callback: (details?) => void) => void
-  saveFileSignal: (content: string | Buffer, options?) => void
-  openFileChannel: (callback: (filePath: string | string[], content?: string | string[], details?) => void) => void
-  openFileSignal:(options?) => void
+  saveFileSignal: (content: string | Buffer, options?) => Promise<any>
+  openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => void
+  openFileSignal:(options?) => Pormise<[string | string[], any, any]>
+
+  getConfig: (moduleName: string) => Promise<any>
+  getProjectConfig: () => Promise<ProjectConfig>
+  setConfig: (moduleName: string, configJson: any) => Promise<any>
+  onConfig: (callback: (projectConfig: ProjectConfig) => void) => void
+
+  projectIsLoaded: () => Promise<boolean>
+  projectReady: () => Promise<void>
 
   imagesGetFilePath: (file: File) => string
   imagesGetConfig: () => Promise<ImageManagerConfig>
