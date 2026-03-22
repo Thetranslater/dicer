@@ -1,4 +1,4 @@
-import { ElectronAPI } from '@electron-toolkit/preload'
+﻿import { ElectronAPI } from '@electron-toolkit/preload'
 
 type ImageManagerConfig = {
   rootPath: string | null
@@ -37,6 +37,7 @@ export interface IAPI {
   saveFileSignal: (content: string | Buffer, options?) => Promise<any>
   openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => void
   openFileSignal: (options?) => Promise<[string | string[], any, any]>
+  normalizePath: (path : string) => Promise<string>
 
   getConfig: (moduleName: string) => Promise<any>
   getProjectConfig: () => Promise<ProjectConfig>
@@ -47,6 +48,8 @@ export interface IAPI {
 
   projectIsLoaded: () => Promise<boolean>
   projectReady: () => Promise<void>
+  openSettingsWindow: (route?: string) => Promise<void>
+  onSettingsNavigate: (callback: (route: string) => void) => () => void
 
   imagesGetFilePath: (file: File) => string
   imagesGetConfig: () => Promise<ImageManagerConfig>
@@ -58,6 +61,7 @@ export interface IAPI {
   imagesCreateFolder: (parentPath: string, folderName?: string) => Promise<string>
   imagesRename: (targetPath: string, nextName: string) => Promise<string>
   imagesMove: (sourcePath: string, targetDirectory: string) => Promise<string>
+  imagesDelete: (targetPaths: string[]) => Promise<{ deletedCount: number; failedPaths: string[] }>
   imagesImportDialog: (targetDirectory: string) => Promise<string[]>
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]) => Promise<string[]>
 }
@@ -71,3 +75,4 @@ declare global {
 }
 
 export {}
+

@@ -2,12 +2,12 @@
   "root": "D:/Programs/projects/dicer/dicer/projects/hello_world",
   "name": "hello_world",
   "image": {
-    "rootPath": "D:\\Programs\\projects\\dicer\\dicer\\test",
+    "rootPath": "D:/Programs/projects/dicer/dicer/test",
     "attachmentMappings": {
-      "New Folder/调幅犁.jpg": "dsadsadsds",
-      "newname/微信图片_20250912142630.jpg": "3213",
-      "屏幕截图 2025-11-07 094738.png": "21313",
-      "播种机.jpg": "https://2819312.com/"
+      "New Folder/调幅犁.jpg": "11",
+      "newname/微信图片_20250912142630.jpg": "11",
+      "屏幕截图 2025-11-07 094738.png": "11",
+      "播种机.jpg": "11"
     }
   }
 }

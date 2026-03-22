@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { FileService, type OpenFileOptions, type OpenFileDetails } from '../utils/fileService'
+import { type OpenFileOptions } from '../utils/fileService'
 
 type ImageItem = {
   name: string
@@ -154,22 +154,6 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
 })
 //#endregion
 
-//#region 'Ipc callbacks'
-function IpcCallbackRegister() {
-  FileService.OpenFileListeners.set('imgmanager-chooseroot', async (filePath: string | string[], _content, details?: OpenFileDetails) => {
-    if (details?.broadcastInfo !== 'imgmanager-chooseroot' || details?.isDialogCanceled) return
-    try {
-      await loadDirectory(filePath as string)
-      statusMessage.value = 'Image root has been set.'
-    } catch (error) {
-      errorMessage.value = toErrorMessage(error)
-    } finally {
-      loading.value = false
-    }
-  })
-}
-//#endregion
-
 //#region 'selection'
 function toggleSelection(path: string): void {
   const index = selectedPaths.value.indexOf(path)
@@ -190,37 +174,9 @@ function onItemClick(event: MouseEvent, item: ImageItem): void {
     if (!item.isParentNav) {
       toggleSelection(item.path)
     }
-    logSelectionDebug('onItemClick')
     return
   }
-
   selectedPaths.value = [item.path]
-
-  logSelectionDebug('onItemClick')
-}
-//#endregion
-
-//#region 'debug'
-function getStateSnapshot() {
-  return {
-    rootPath: rootPath.value,
-    currentPath: currentPath.value,
-    hasRoot: hasRoot.value,
-    loading: loading.value,
-    errorMessage: errorMessage.value,
-    statusMessage: statusMessage.value,
-    selectedPaths: [...selectedPaths.value],
-    itemsCount: items.value.length,
-    renamingPath: renamingPath.value,
-    dropTargetPath: dropTargetPath.value
-  }
-}
-function logSelectionDebug(source: string): void {
-  console.log('[ImagesManager][Selection]', {
-    source,
-    currentPath: currentPath.value,
-    selectedPaths: [...selectedPaths.value],
-  })
 }
 //#endregion
 
@@ -239,7 +195,29 @@ async function chooseRootDirectory(): Promise<void> {
       message: 'ImgManager选择根目录功能'
     }
   }
-  window.api.openFileSignal(options)
+
+  try {
+    const [filePath, _content, details] = await window.api.openFileSignal(options)
+
+    if (details?.isDialogCanceled) {
+      statusMessage.value = 'Root selection canceled.'
+      return
+    }
+
+    const selectedPath = Array.isArray(filePath) ? filePath[0] : filePath
+    if (!selectedPath) {
+      statusMessage.value = 'No root directory selected.'
+      return
+    }
+
+    const savedRootPath = await window.api.imagesSetRoot(selectedPath)
+    await loadDirectory(savedRootPath)
+    statusMessage.value = `Root updated: ${normalizePath(savedRootPath)}`
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
 }
 async function goToBreadcrumb(path: string): Promise<void> {
   await loadDirectory(path)
@@ -417,14 +395,6 @@ async function onWorkspaceDrop(event: DragEvent): Promise<void> {
 }
 //#endregion
 
-function logStateChange(key: string, prev: unknown, next: unknown): void {
-  console.groupCollapsed(`[ImagesManager][StateChange] ${key}`)
-  console.log('prev:', prev)
-  console.log('next:', next)
-  console.log('snapshot:', getStateSnapshot())
-  console.groupEnd()
-}
-
 function displayNameForPath(path: string): string {
   const normalized = normalizePath(path).replace(/\/+$/, '')
   if (/^[A-Za-z]:$/.test(normalized)) return normalized
@@ -461,7 +431,6 @@ async function startRenameSelected(): Promise<void> {
     if (loading.value || renamingPath.value) return
     renamingPath.value = selectedItem.path
     renamingName.value = selectedItem.name
-    logSelectionDebug('rename-start')
     await nextTick()
     renameInputRef.value?.focus()
     renameInputRef.value?.select()
@@ -491,7 +460,6 @@ async function commitRename(): Promise<void> {
     statusMessage.value = `Renamed to: ${nextName}`
     await loadDirectory(currentPath.value)
     selectedPaths.value = [renamedPath]
-    logSelectionDebug('rename-commit')
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -514,9 +482,16 @@ function onRenameInputKeydown(event: KeyboardEvent): void {
 }
 
 function onGlobalKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'F2' || selectedPaths.value.length !== 1 || renamingPath.value) return
   const target = event.target as HTMLElement | null
   if (target?.tagName === 'INPUT' || target?.isContentEditable) return
+
+  if (event.key === 'Delete') {
+    event.preventDefault()
+    void deleteSelected()
+    return
+  }
+
+  if (event.key !== 'F2' || selectedPaths.value.length !== 1 || renamingPath.value) return
   event.preventDefault()
   void startRenameSelected()
 }
@@ -536,22 +511,48 @@ async function importByDialog(): Promise<void> {
   }
 }
 
-function openConfigPlaceholder(): void {
-  window.alert('Image config page will be implemented in a later version.')
+async function deleteSelected(): Promise<void> {
+  if (loading.value) return
+  if (renamingPath.value) return
+
+  const targets = Array.from(new Set(selectedItems.value.map((item) => item.path)))
+  if (targets.length === 0) return
+
+  loading.value = true
+  errorMessage.value = ''
+  try {
+    const result = await window.api.imagesDelete(targets)
+    const failedCount = result.failedPaths.length
+
+    statusMessage.value =
+      failedCount === 0
+        ? `Deleted ${result.deletedCount} item(s).`
+        : `Deleted ${result.deletedCount} item(s), failed ${failedCount} item(s).`
+
+    selectedPaths.value = []
+    await loadDirectory(currentPath.value || undefined)
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
+  }
+}
+
+async function openConfigPlaceholder(): Promise<void> {
+  try {
+    await window.api.openSettingsWindow('/images')
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  }
 }
 
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown)
-  IpcCallbackRegister()
   void initialize()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onGlobalKeydown)
-})
-
-watch(dropTargetPath, (next, prev) => {
-  logStateChange('dropTargetPath', prev, next)
 })
 </script>
 
@@ -561,7 +562,6 @@ watch(dropTargetPath, (next, prev) => {
       <div class="toolbar-left">
         <button @click="goUp" :disabled="!canGoUp || loading" title="Go up">Up</button>
         <button @click="refresh" :disabled="!hasRoot || loading" title="Refresh">Refresh</button>
-        <button @click="chooseRootDirectory" :disabled="loading" title="Set root folder">Set Root</button>
       </div>
 
       <div class="toolbar-spacer"></div>
@@ -569,7 +569,7 @@ watch(dropTargetPath, (next, prev) => {
       <div class="toolbar-right">
         <button @click="importByDialog" :disabled="loading || !hasRoot">Import Images</button>
         <button @click="createFolder" :disabled="loading || !hasRoot">New Folder</button>
-        <button @click="openConfigPlaceholder" :disabled="!hasRoot">Image Config</button>
+        <button @click="openConfigPlaceholder" :disabled="loading">Image Config</button>
       </div>
     </div>
 
@@ -817,3 +817,5 @@ watch(dropTargetPath, (next, prev) => {
   color: #656d76;
 }
 </style>
+
+

@@ -54,6 +54,9 @@ export type OpenFileCallback = (filePath: string | string[], content?: string | 
 export class FileService{
   public static readonly OpenFileListeners: Map<string, OpenFileCallback> = new Map<string, OpenFileCallback>()
   public static readonly SaveFileListeners: Map<string, SaveFileCallback> = new Map<string, SaveFileCallback>()
+  public static async normalizePath(path : string) : Promise<string> {
+    return window.api.normalizePath(path)
+  }
   public static emitAfterRead(filePath: string | string[], content?: string | string[], details? : OpenFileDetails) {
     console.log(this.OpenFileListeners.size)
     this.OpenFileListeners.forEach((callback, _) => callback(filePath, content, details))

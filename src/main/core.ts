@@ -1,6 +1,6 @@
 ﻿import { dialog, ipcMain } from 'electron'
 import { readFileSync, statSync, readdirSync, writeFileSync, existsSync, mkdirSync} from 'fs'
-import { basename, extname, join, dirname } from 'path'
+import { basename, extname, join, dirname, normalize } from 'path'
 import assert from 'assert'
 
 import type { OpenFileOptions, OpenFileDetails, FSNode, SaveFileOptions, SaveFileDetails } from '../renderer/src/utils/fileService'
@@ -29,6 +29,17 @@ function buildDirectoryNode(directoryPath: string): FSNode {
     name: basename(directoryPath),
     children
   }
+}
+
+export function normalizePath(path : string) : string {
+  return normalize(path).replace(/\\/g, '/')
+}
+
+function normalizeSettingsRoute(route?: string): string {
+  if (!route) return '/project'
+  const trimmed = route.trim()
+  if (!trimmed) return '/project'
+  return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
 }
 
 export async function openFile(options?: OpenFileOptions): Promise<[string | string[], string | Buffer | FSNode | null | (string | Buffer | FSNode | null)[], OpenFileDetails]> {
@@ -143,11 +154,12 @@ export function registerCoreIpcHandlers(): void {
   ipcMain.handle('sys:openfile', (_e, options) => {
     return openFile(options)
   })
-
   ipcMain.handle('sys:savefile', (_e, content, options) => {
     return saveFile(content, options)
   })
-
+  ipcMain.handle('sys:normalizepath', (_e, path: string)=>{
+    return normalizePath(path)
+  })
   ipcMain.handle('sys:getconfig', (_e, moduleName: string) => {
     return configManager.get(moduleName)
   })
@@ -195,5 +207,26 @@ export function registerCoreIpcHandlers(): void {
     }
     
     windowManager.createWindow('editor')
+  })
+
+  ipcMain.handle('window:open-settings', async (_e, route?: string) => {
+    const targetRoute = normalizeSettingsRoute(route)
+
+    const existingWindow = windowManager.get('settings')
+    const settingsWindow =
+      existingWindow && !existingWindow.isDestroyed()
+        ? existingWindow
+        : windowManager.createWindow('settings', { focusIfExists: false })
+
+    const navigate = () => {
+      settingsWindow.webContents.send('settings:navigate', targetRoute)
+      settingsWindow.focus()
+    }
+
+    if (settingsWindow.webContents.isLoadingMainFrame()) {
+      settingsWindow.webContents.once('did-finish-load', navigate)
+    } else {
+      navigate()
+    }
   })
 }

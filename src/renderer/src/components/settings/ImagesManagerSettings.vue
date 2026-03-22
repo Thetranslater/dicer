@@ -7,42 +7,29 @@ type ImageAttachmentMappingItem = {
   attachmentUrl: string
 }
 
-const ROOT_PICKER_CALLBACK_KEY = 'settings-images-root-picker'
+type ImageModuleConfig = {
+  rootPath: string | null
+  attachmentMappings: Record<string, string>
+}
 
 const rootPath = ref<string | null>(null)
 const mappings = ref<ImageAttachmentMappingItem[]>([])
 const loading = ref(false)
-const saving = ref(false)
 const errorMessage = ref('')
-const infoMessage = ref('')
-
-function normalizePath(path: string): string {
-  return path.replace(/\\/g, '/')
-}
+const isDirty = ref(false)
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
 }
 
-async function loadMappings(): Promise<void> {
-  loading.value = true
-  errorMessage.value = ''
-  try {
-    const result = await window.api.imagesGetAttachmentMappings()
-    rootPath.value = result.rootPath ? normalizePath(result.rootPath) : null
-    mappings.value = result.items.map((item) => ({
-      imagePath: item.imagePath,
-      attachmentUrl: item.attachmentUrl
-    }))
-  } catch (error) {
-    errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
+function markDirty(): void {
+  if (!isDirty.value) {
+    isDirty.value = true
   }
 }
 
-function buildSavePayload(): Record<string, string> {
+function buildAttachmentMappingsPayload(): Record<string, string> {
   const payload: Record<string, string> = {}
   for (const item of mappings.value) {
     const url = item.attachmentUrl.trim()
@@ -52,24 +39,46 @@ function buildSavePayload(): Record<string, string> {
   return payload
 }
 
-async function saveSettings(): Promise<void> {
-  saving.value = true
+function buildConfigPayload(): ImageModuleConfig {
+  return {
+    rootPath: rootPath.value,
+    attachmentMappings: buildAttachmentMappingsPayload()
+  }
+}
+
+async function loadConfig(): Promise<void> {
+  loading.value = true
   errorMessage.value = ''
-  infoMessage.value = ''
   try {
-    const saved = await window.api.imagesSaveAttachmentMappings(buildSavePayload())
-    await loadMappings()
-    infoMessage.value = `Saved ${saved.savedCount} mapping(s) to config manager.`
+    const result = await window.api.imagesGetAttachmentMappings()
+    rootPath.value = result.rootPath ? await FileService.normalizePath(result.rootPath) : null
+    mappings.value = result.items.map((item) => ({
+      imagePath: item.imagePath,
+      attachmentUrl: item.attachmentUrl
+    }))
+    isDirty.value = false
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
-    saving.value = false
+    loading.value = false
   }
+}
+
+function updateAttachmentUrl(index: number, nextValue: string): void {
+  const item = mappings.value[index]
+  if (!item) return
+  if (item.attachmentUrl === nextValue) return
+  item.attachmentUrl = nextValue
+  markDirty()
+}
+
+function onMappingInput(index: number, event: Event): void {
+  const target = event.target as HTMLInputElement | null
+  updateAttachmentUrl(index, target?.value ?? '')
 }
 
 async function chooseRootDirectory() {
   errorMessage.value = ''
-  infoMessage.value = ''
 
   const options: OpenFileOptions = {
     behavior: 'path',
@@ -86,31 +95,36 @@ async function chooseRootDirectory() {
   const selectedPath = Array.isArray(result[0]) ? result[0][0] : result[0]
   if (!selectedPath) return
 
-  loading.value = true
-  errorMessage.value = ''
-  infoMessage.value = ''
   try {
-    const savedRootPath = await window.api.imagesSetRoot(selectedPath)
-    rootPath.value = normalizePath(savedRootPath)
-    await loadMappings()
-    infoMessage.value = 'Image root path has been updated.'
+    const normalized = await FileService.normalizePath(selectedPath)
+    if (normalized !== rootPath.value) {
+      rootPath.value = normalized
+      markDirty()
+    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
-  } finally {
-    loading.value = false
   }
 }
 
-function registerIpcCallbacks(): void {
+async function persistConfigOnExit(): Promise<void> {
+  if (!isDirty.value) return
+
+  const payload = buildConfigPayload()
+  try {
+    await window.api.setConfig('image', payload)
+    isDirty.value = false
+    console.log('[ImagesManagerSettings] config saved on unmount', payload)
+  } catch (error) {
+    console.error('[ImagesManagerSettings] failed to save config on unmount', error)
+  }
 }
 
 onMounted(() => {
-  registerIpcCallbacks()
-  void loadMappings()
+  void loadConfig()
 })
 
 onBeforeUnmount(() => {
-  FileService.OpenFileListeners.delete(ROOT_PICKER_CALLBACK_KEY)
+  void persistConfigOnExit()
 })
 </script>
 
@@ -121,13 +135,11 @@ onBeforeUnmount(() => {
     <div class="toolbar">
       <label class="field-label">Root Path</label>
       <input class="root-input" :value="rootPath ?? ''" readonly placeholder="Not configured" />
-      <button @click="chooseRootDirectory" :disabled="loading || saving">Choose Root</button>
-      <button @click="loadMappings" :disabled="loading || saving">Reload</button>
-      <button @click="saveSettings" :disabled="loading || saving || !rootPath">Save Mappings</button>
+      <button @click="chooseRootDirectory" :disabled="loading">Choose Root</button>
+      <button @click="loadConfig" :disabled="loading">Reload</button>
     </div>
 
     <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
-    <p v-else-if="infoMessage" class="info-text">{{ infoMessage }}</p>
 
     <div v-if="!rootPath" class="placeholder">
       Please choose an image root path first.
@@ -138,9 +150,15 @@ onBeforeUnmount(() => {
     </div>
 
     <div v-else class="mapping-list">
-      <div v-for="item in mappings" :key="item.imagePath" class="mapping-row">
+      <div v-for="(item, index) in mappings" :key="item.imagePath" class="mapping-row">
         <div class="image-path" :title="item.imagePath">{{ item.imagePath }}</div>
-        <input v-model="item.attachmentUrl" class="url-input" type="text" placeholder="NGA attachment URL" />
+        <input
+          :value="item.attachmentUrl"
+          class="url-input"
+          type="text"
+          placeholder="NGA attachment URL"
+          @input="onMappingInput(index, $event)"
+        />
       </div>
     </div>
   </section>
@@ -157,7 +175,7 @@ onBeforeUnmount(() => {
 
 .toolbar {
   display: grid;
-  grid-template-columns: 90px 1fr auto auto auto;
+  grid-template-columns: 90px 1fr auto auto;
   gap: 8px;
   align-items: center;
 }
@@ -192,12 +210,6 @@ onBeforeUnmount(() => {
 
 .error-text {
   color: #cf222e;
-  font-size: 13px;
-  margin: 0;
-}
-
-.info-text {
-  color: #0969da;
   font-size: 13px;
   margin: 0;
 }

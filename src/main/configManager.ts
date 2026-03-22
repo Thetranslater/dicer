@@ -1,6 +1,8 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 
+import { normalizePath } from './core'
+
 export type ProjectConfig = Record<string, any>
 
 const PROJECT_CONFIG_FILE = 'project.config.json'
@@ -23,14 +25,6 @@ class ConfigManager {
     return ConfigManager.instance
   }
 
-  private normalizePath(pathValue: string): string {
-    return pathValue.replace(/\\/g, '/')
-  }
-
-  private resolvePath(pathValue: string): string {
-    return this.normalizePath(resolve(pathValue))
-  }
-
   private toRecord(configJson: object): Record<string, any> {
     if (!isPlainObject(configJson)) {
       throw new Error('config must be a JSON object')
@@ -38,37 +32,17 @@ class ConfigManager {
     return configJson
   }
 
-  private resolvePersistPath(): string {
-    const project = isPlainObject(this.get('project')) ? this.get('project') : {}
-
-    if (typeof project.configPath === 'string' && project.configPath.trim().length > 0) {
-      return this.resolvePath(project.configPath)
-    }
-
-    const projectBase =
-      (typeof project.projectPath === 'string' && project.projectPath.trim().length > 0
-        ? project.projectPath
-        : typeof project.root === 'string' && project.root.trim().length > 0
-          ? project.root
-          : '')
+  private persistToDisk(): void {
+    const projectBase =(typeof this.config.root === 'string' && this.config.root.trim().length > 0? this.config.root: '')
 
     if (!projectBase) {
-      throw new Error('project config path is not available')
+      throw new Error('project root path is not available')
     }
 
-    const configPath = this.normalizePath(join(this.resolvePath(projectBase), PROJECT_CONFIG_FILE))
-    this.config.project = {
-      ...project,
-      configPath
-    }
+    const filePath = normalizePath(join(resolve(projectBase), PROJECT_CONFIG_FILE))
 
-    return configPath
-  }
-
-  private persistToDisk(): void {
-    const filePath = this.resolvePersistPath()
     mkdirSync(dirname(filePath), { recursive: true })
-    writeFileSync(filePath, JSON.stringify(this.getProjectConfig(), null, 2), 'utf-8')
+    writeFileSync(filePath, JSON.stringify(this.config, null, 2), 'utf-8')
   }
 
   load(configJson: object): ProjectConfig {

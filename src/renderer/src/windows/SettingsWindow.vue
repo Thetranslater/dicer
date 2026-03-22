@@ -1,5 +1,26 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { onBeforeUnmount, onMounted } from 'vue'
+import { RouterLink, RouterView, useRouter } from 'vue-router'
+
+const router = useRouter()
+let disposeNavigateListener: (() => void) | null = null
+
+function navigateTo(route: string): void {
+  const target = route?.trim() ? (route.startsWith('/') ? route : `/${route}`) : '/project'
+  if (router.currentRoute.value.path === target) return
+  void router.push(target).catch(() => undefined)
+}
+
+onMounted(() => {
+  disposeNavigateListener = window.api.onSettingsNavigate((route) => {
+    navigateTo(route)
+  })
+})
+
+onBeforeUnmount(() => {
+  disposeNavigateListener?.()
+  disposeNavigateListener = null
+})
 </script>
 
 <template>

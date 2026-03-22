@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, webUtils } from 'electron'
+﻿import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 type ImageManagerConfig = {
@@ -44,6 +44,7 @@ const api = {
     ipcRenderer.on('sys:openfilec', (_event, filePath, content, details) => callback(filePath, content, details))
   },
   openFileSignal: (options?) => ipcRenderer.invoke('sys:openfile', options),
+  normalizePath: (path:string) : Promise<string>=>ipcRenderer.invoke('sys:normalizepath', path),
   //core:config
   getConfig: (moduleName: string): Promise<any> => ipcRenderer.invoke('sys:getconfig', moduleName),
   getProjectConfig: (): Promise<ProjectConfig> => ipcRenderer.invoke('sys:getprojectconfig'),
@@ -58,6 +59,12 @@ const api = {
   },
   projectIsLoaded: (): Promise<boolean> => ipcRenderer.invoke('project:is-loaded'),
   projectReady: (): Promise<void> => ipcRenderer.invoke('project:ready'),
+  openSettingsWindow: (route?: string): Promise<void> => ipcRenderer.invoke('window:open-settings', route),
+  onSettingsNavigate: (callback: (route: string) => void): (() => void) => {
+    const listener = (_event, route: string) => callback(route)
+    ipcRenderer.on('settings:navigate', listener)
+    return () => ipcRenderer.removeListener('settings:navigate', listener)
+  },
 
   // Image manager module (module:function)
   imagesGetFilePath: (file : File) : string => webUtils.getPathForFile(file),
@@ -76,6 +83,8 @@ const api = {
     ipcRenderer.invoke('images:rename', targetPath, nextName),
   imagesMove: (sourcePath: string, targetDirectory: string): Promise<string> =>
     ipcRenderer.invoke('images:move', sourcePath, targetDirectory),
+  imagesDelete: (targetPaths: string[]): Promise<{ deletedCount: number; failedPaths: string[] }> =>
+    ipcRenderer.invoke('images:delete', targetPaths),
   imagesImportDialog: (targetDirectory: string): Promise<string[]> =>
     ipcRenderer.invoke('images:import-dialog', targetDirectory),
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]): Promise<string[]> =>
@@ -98,3 +107,4 @@ if (process.contextIsolated) {
   // @ts-ignore (define in dts)
   window.api = api
 }
+
