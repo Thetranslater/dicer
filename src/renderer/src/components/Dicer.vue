@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { ref} from 'vue'
+import { ref } from 'vue'
 import { useEditorStore } from '../composables/useEditorStore'
-import { Expression, generateDiceTextWithResult } from '../utils/expression'
+import { Expression } from '../utils/expression'
 
 const { getEditor } = useEditorStore()
 
@@ -61,14 +61,14 @@ function rollDice() {
   let result: number
   try {
     const expr = new Expression(diceExpression)
-    result = expr.evaluateExpression()
+    result = expr.evaluate()
   } catch (e) {
     // 如果解析失败，使用默认值 0
     result = 0
   }
 
   // 插入带有实际结果的文本到编辑器
-  const text = generateDiceTextWithResult(diceExpression, result)
+  const text = `${expression}=${result}`
   editor.chain().focus().insertContent(text).run()
 }
 </script>
