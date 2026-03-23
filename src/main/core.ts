@@ -127,15 +127,23 @@ export async function saveFile(content: string | Buffer, options?: SaveFileOptio
   }
 
   if (options?.path) {
+    if(options?.isMakedir){
+      if(!existsSync(options.path))
+        mkdirSync(options.path)
+      return details
+    }
+
     if (options.isBinary !== undefined) {
       const isContentBinary = typeof content !== 'string'
       if ((isContentBinary && !options.isBinary) || (!isContentBinary && options.isBinary)) {
         throw new Error('File format does not match content type')
       }
     }
-    if (!existsSync(options.path)) mkdirSync(dirname(options.path))
+    if (!existsSync(options.path)) {
+      mkdirSync(dirname(options.path))
+    }
     writeFileSync(options.path, content, {
-      flag:'w'
+      flag:'w',
     })
     details.isDialogCanceled = false
     return details

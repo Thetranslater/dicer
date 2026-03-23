@@ -102,16 +102,12 @@ async function openExistingProject(): Promise<void> {
 
   try {
     const basePath = await chooseDirectory(true)
-    if (!basePath) {
-      loading.value = false
+    if (!basePath)
       return
-    }
 
     const existingConfig = await readExistingProjectConfig(basePath)
-    if (!existingConfig) {
-      loading.value = false
+    if (!existingConfig)
       throw new Error('No valid project.config.json found in selected folder.')
-    }
 
     createRootPath.value = ''
     selectedPath.value = existingConfig.root
@@ -123,6 +119,8 @@ async function openExistingProject(): Promise<void> {
     await window.api.projectReady()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
   }
 }
 
@@ -133,7 +131,6 @@ async function createProject(): Promise<void> {
 
   try {
     if (!createRootPath.value) {
-      loading.value = false
       throw new Error('Please choose project root path first.')
     }
 
@@ -160,11 +157,12 @@ async function createProject(): Promise<void> {
 
     await window.api.saveFileSignal(JSON.stringify(projectConfig, null, 2), saveConfigOptions)
     await window.api.loadProjectConfig(projectConfig)
-    loading.value = false
     infoMessage.value = `Project "${safeName}" created.`
     await window.api.projectReady()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
+  } finally {
+    loading.value = false
   }
 }
 </script>

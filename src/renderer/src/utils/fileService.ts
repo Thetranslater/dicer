@@ -7,7 +7,8 @@ export type FSNode = {
 export type SaveFileOptions = {
   path?:string
   broadcastInfo?:string
-  isBinary?:Boolean
+  isBinary?:boolean
+  isMakedir?:boolean
   encoding?:string
   dialogfilters?: {name: string, extensions: string[]}[]
   dev?:{
@@ -18,7 +19,7 @@ export type SaveFileOptions = {
 
 export type SaveFileDetails = {
   broadcastInfo?:string
-  isDialogCanceled?:Boolean
+  isDialogCanceled?:boolean
   dev?:{
     source?:string
     message?:string
@@ -31,7 +32,7 @@ export type SaveFileCallback = (details?:SaveFileDetails) => void
 export type OpenFileOptions = {
   path?: string[]
   behavior?: 'path' | 'content'
-  isMultiselection?: Boolean
+  isMultiselection?: boolean
   broadcastInfo?: string
   dialogfilters?: {name: string, extensions: string[]}[]
   dialogProperties?: ("openFile" | "openDirectory" | "multiSelections" | "showHiddenFiles" | "createDirectory" | "promptToCreate" | "noResolveAliases" | "treatPackageAsDirectory" | "dontAddToRecent")[]
@@ -42,7 +43,7 @@ export type OpenFileOptions = {
 }
 export type OpenFileDetails = {
   broadcastInfo?: string
-  isDialogCanceled?: Boolean
+  isDialogCanceled?: boolean
   dev?: {
     source?: string
     message?: string

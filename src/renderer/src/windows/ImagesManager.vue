@@ -234,7 +234,7 @@ async function createFolder(): Promise<void> {
     const createdPath = await window.api.imagesCreateFolder(currentPath.value)
     const createdName = displayNameForPath(createdPath)
     statusMessage.value = `Folder created: ${createdName}`
-    await refresh()
+    refresh()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
