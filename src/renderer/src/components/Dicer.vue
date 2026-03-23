@@ -119,7 +119,7 @@ function rollDice() {
     position: relative;
 
     .dicer-input {
-      width: 50px;
+      width: 180px;
       height: 28px;
       border: 1px solid #ccc;
       border-left: none;

@@ -88,10 +88,34 @@ const fontSizes = [
   { label: '36px', value: '36px' },
   { label: '48px', value: '48px' }
 ]
-const colors = Array.from({ length: 24 }, (_, i) => ({
-  label: `颜色${i + 1}`,
-  value: '#FF0000'
-}))
+const colors = [
+  { label: 'skyblue', value: 'skyblue' },
+  { label: 'royalblue', value: 'royalblue' },
+  { label: 'blue', value: 'blue' },
+  { label: 'darkblue', value: 'darkblue' },
+  { label: 'orange', value: 'orange' },
+  { label: 'orangered', value: 'orangered' },
+  { label: 'crimson', value: 'crimson' },
+  { label: 'red', value: 'red' },
+  { label: 'firebrick', value: 'firebrick' },
+  { label: 'darkred', value: 'darkred' },
+  { label: 'green', value: 'green' },
+  { label: 'limegreen', value: 'limegreen' },
+  { label: 'seagreen', value: 'seagreen' },
+  { label: 'teal', value: 'teal' },
+  { label: 'deeppink', value: 'deeppink' },
+  { label: 'tomato', value: 'tomato' },
+  { label: 'coral', value: 'coral' },
+  { label: 'purple', value: 'purple' },
+  { label: 'indigo', value: 'indigo' },
+  { label: 'burlywood', value: 'burlywood' },
+  { label: 'sandybrown', value: 'sandybrown' },
+  { label: 'sienna', value: 'sienna' },
+  { label: 'chocolate', value: 'chocolate' },
+  { label: 'silver', value: 'silver' }
+]
+const showColorPalette = ref(false)
+const colorPickerRef = ref<HTMLElement | null>(null)
 //#endregion
 
 //#region 'Ipc Callbacks'
@@ -145,7 +169,6 @@ const handleEditorSaveAs = (details?: SaveFileDetails) => {
 
 function IpcCallbackRegister() {
   FileService.OpenFileListeners.set('editor-opencontent', (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
-    console.log("reply1")
     if (!editor.value) return
     if (details?.broadcastInfo !== 'menu-openfile' || details?.isDialogCanceled) return
     if (content) {
@@ -163,8 +186,6 @@ function IpcCallbackRegister() {
         currentFilePath.value = filePath as string
       }
     }
-    //dev log
-    console.log(details.dev)
   })
   //image insertion handler
   FileService.OpenFileListeners.set('editor-openimage', (filePath: string | string[], _content, details?: OpenFileDetails) => {
@@ -183,6 +204,7 @@ function IpcCallbackRegister() {
 
 onMounted(() => {
   IpcCallbackRegister()
+  window.addEventListener('mousedown', handleGlobalMouseDown)
 })
 
 //#region 'basic function': bold, italic, font....
@@ -218,14 +240,25 @@ const handleFontSizeChange = (e: Event) => {
   }
 }
 
-const handleColorChange = (e: Event) => {
-  const value = (e.target as HTMLSelectElement).value
+const applyColor = (value: string) => {
   if (!editor.value) return
-  if (!value) {
+  if (currentColor.value === value) {
     editor.value.chain().focus().unsetColor().run()
   } else {
     editor.value.chain().focus().setColor(value).run()
   }
+  showColorPalette.value = false
+}
+
+const toggleColorPalette = () => {
+  showColorPalette.value = !showColorPalette.value
+}
+
+const handleGlobalMouseDown = (event: MouseEvent) => {
+  if (!showColorPalette.value) return
+  const target = event.target as Node | null
+  if (colorPickerRef.value && target && colorPickerRef.value.contains(target)) return
+  showColorPalette.value = false
 }
 
 // 处理格式按钮点击（只响应鼠标，键盘触发时 event.detail === 0）
@@ -257,7 +290,7 @@ const insertImage = () => {
     dialogProperties: ['openFile'],
     dev: {
       source: 'Editor.vue-insertImage',
-      message: '编辑器插入图像'
+      message: '编辑器插入图片'
     }
   }
   window.api.openFileSignal(options)
@@ -270,13 +303,14 @@ watch(editor, (newInstance) => {
 })
 
 onBeforeUnmount(() => {
+  window.removeEventListener('mousedown', handleGlobalMouseDown)
   editor.value?.destroy()
 })
 </script>
 
 <template>
   <div class="editor-container" v-if="editor">
-    <!-- 工具栏 -->
+    <!-- 工具栏-->
     <div class="toolbar">
       <!-- 文字格式 -->
       <div class="toolbar-group">
@@ -338,13 +372,17 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 颜色 -->
-      <div class="toolbar-group">
-        <select :value="currentColor" @change="handleColorChange" title="颜色">
-          <option value="">颜色</option>
-          <option v-for="color in colors" :key="color.value" :value="color.value">
-            {{ color.label }}
-          </option>
-        </select>
+      <div class="toolbar-group color-group" ref="colorPickerRef">
+        <button type="button" class="color-trigger" @click="toggleColorPalette" title="颜色">
+          <span class="color-preview" :style="{ backgroundColor: currentColor || '#ffffff' }"></span>
+          <span class="color-arrow">▾</span>
+        </button>
+
+        <div v-show="showColorPalette" class="color-palette">
+          <button v-for="color in colors" :key="color.value" type="button" class="color-swatch"
+            :class="{ active: currentColor === color.value }" :style="{ backgroundColor: color.value }"
+            :title="color.label" @click="applyColor(color.value)" />
+        </div>
       </div>
 
       <!-- 标题 -->
@@ -391,7 +429,8 @@ onBeforeUnmount(() => {
         <button @click="editor.chain().focus().addRowAfter().run()" :disabled="!editor.can().addRowAfter()" title="添加行">
           =
         </button>
-        <button @click="editor.chain().focus().deleteTable().run()" :disabled="!editor.can().deleteTable()" title="删除表格">
+        <button @click="editor.chain().focus().deleteTable().run()" :disabled="!editor.can().deleteTable()"
+          title="删除表格">
           &#10005;
         </button>
       </div>
@@ -519,6 +558,60 @@ onBeforeUnmount(() => {
 
 .toolbar select {
   min-width: 80px;
+}
+
+.color-group {
+  position: relative;
+}
+
+.color-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 52px;
+  justify-content: center;
+}
+
+.color-preview {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #999;
+  border-radius: 2px;
+  box-sizing: border-box;
+}
+
+.color-arrow {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.color-palette {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 20;
+  display: grid;
+  grid-template-columns: repeat(8, 18px);
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.color-swatch {
+  width: 18px;
+  height: 18px;
+  border: 1px solid #bbb;
+  border-radius: 2px;
+  padding: 0;
+  min-width: 0;
+}
+
+.color-swatch.active {
+  outline: 2px solid #4a90d9;
+  outline-offset: 1px;
 }
 
 .editor-wrapper {
@@ -704,7 +797,7 @@ onBeforeUnmount(() => {
   background: #e8f4fc;
 }
 
-/* 折叠块样式 */
+/* 折叠块样式*/
 .editor-content :deep(.tiptap .details) {
   display: flex;
   gap: 0.25rem;

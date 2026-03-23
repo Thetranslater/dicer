@@ -1,12 +1,14 @@
 ﻿<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { type OpenFileOptions } from '../utils/fileService'
+import type { ImageModuleConfig } from '../components/settings/ImagesManagerSettings.vue'
+
+const IMAGESMANAGER_MODULE_NAME = 'image'
 
 type ImageItem = {
   name: string
   path: string
   isDirectory: boolean
-  size: number
   isParentNav?: boolean
 }
 
@@ -17,6 +19,7 @@ type Breadcrumb = {
 //#region 'var set'
 const rootPath = ref<string | null>(null)
 const currentPath = ref<string>('')
+const parentPath = ref<string | null>(null)
 const items = ref<ImageItem[]>([])
 const selectedPaths = ref<string[]>([])
 const dropTargetPath = ref<string | null>(null)
@@ -32,23 +35,19 @@ const statusMessage = ref('')
 //#endregion
 
 //#region 'basic function'
-function normalizePath(path: string): string {
-  return path.replace(/\\/g, '/')
-}
 function isPathSelected(path: string): boolean {
   return selectedPaths.value.includes(path)
 }
 function toImageSrc(path: string): string {
-  return `app://${encodeURI(normalizePath(path))}`
+  return `app://${encodeURI(path)}`
 }
-async function loadDirectory(path?: string): Promise<void> {
+async function loadDirectory(path: string): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
     const result = await window.api.imagesListDir(path)
-    rootPath.value = normalizePath(result.rootPath)
-    currentPath.value = normalizePath(result.currentPath)
-    items.value = result.items
+    currentPath.value = await window.api.normalizePath(path)
+    items.value = result
     selectedPaths.value = []
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -56,42 +55,23 @@ async function loadDirectory(path?: string): Promise<void> {
     loading.value = false
   }
 }
-function getParentPath(path: string): string | null {
-  const normalized = normalizePath(path).replace(/\/+$/, '')
-  if (!normalized) return null
-  if (/^[A-Za-z]:$/.test(normalized)) return null
-
-  const idx = normalized.lastIndexOf('/')
-  if (idx < 0) return null
-
-  // Keep drive root as "D:/" instead of "D:".
-  // "D:" may resolve to drive working directory on Windows.
-  if (idx === 2 && /^[A-Za-z]:\//.test(normalized)) {
-    return normalized.slice(0, 3)
-  }
-
-  const parent = normalized.slice(0, idx)
-  return parent || null
-}
 //#endregion
 
 //#region 'reactive properties'
 const hasRoot = computed(() => Boolean(rootPath.value))
-const parentPath = computed(() => getParentPath(currentPath.value))
-const canGoUp = computed(() => Boolean(parentPath.value))
+const canGoUp = computed(() => { console.log('canGoUp computed'); return Boolean(parentPath.value) })
 const sortedItems = computed(() => {
+  console.log('sorted:', items.value)
   const list = [...items.value]
   list.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
     return a.name.localeCompare(b.name, 'en-US')
   })
-
   if (parentPath.value) {
     const parentItem: ImageItem = {
       name: '..',
       path: parentPath.value,
       isDirectory: true,
-      size: 0,
       isParentNav: true,
     }
     return [parentItem, ...list]
@@ -111,7 +91,7 @@ const breadcrumbs = computed<Breadcrumb[]>(() => {
   const basePath = currentPath.value || rootPath.value
   if (!basePath) return []
 
-  const normalized = normalizePath(basePath).replace(/\/+$/, '')
+  const normalized = basePath.replace(/\/+$/, '')
   if (!normalized) return []
 
   // Windows drive path: D:/a/b -> D: > a > b
@@ -204,15 +184,23 @@ async function chooseRootDirectory(): Promise<void> {
       return
     }
 
-    const selectedPath = Array.isArray(filePath) ? filePath[0] : filePath
+    const selectedPath = filePath as string
     if (!selectedPath) {
       statusMessage.value = 'No root directory selected.'
       return
     }
-
-    const savedRootPath = await window.api.imagesSetRoot(selectedPath)
-    await loadDirectory(savedRootPath)
-    statusMessage.value = `Root updated: ${normalizePath(savedRootPath)}`
+    const config: ImageModuleConfig = {
+      rootPath: selectedPath,
+      attachmentMappings: {}
+    }
+    const savedResult = await window.api.setConfig(IMAGESMANAGER_MODULE_NAME, config)
+    if (savedResult) {
+      await loadDirectory(selectedPath)
+      statusMessage.value = `Root updated: ${selectedPath}`
+    }
+    else {
+      errorMessage.value = 'saving config failed'
+    }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -224,7 +212,7 @@ async function goToBreadcrumb(path: string): Promise<void> {
 }
 async function refresh(): Promise<void> {
   if (!hasRoot.value) return
-  await loadDirectory(currentPath.value || undefined)
+  await loadDirectory(currentPath.value)
 }
 async function goUp(): Promise<void> {
   if (!parentPath.value) return
@@ -257,7 +245,7 @@ async function createFolder(): Promise<void> {
 
 //#region 'drag-drop'
 function isSamePath(a: string, b: string): boolean {
-  return normalizePath(a) === normalizePath(b)
+  return window.api.normalizePath(a) === window.api.normalizePath(b)
 }
 function getInternalDragSources(dataTransfer: DataTransfer | null | undefined): string[] {
   if (!dataTransfer) return []
@@ -396,7 +384,7 @@ async function onWorkspaceDrop(event: DragEvent): Promise<void> {
 //#endregion
 
 function displayNameForPath(path: string): string {
-  const normalized = normalizePath(path).replace(/\/+$/, '')
+  const normalized = path.replace(/\/+$/, '')
   if (/^[A-Za-z]:$/.test(normalized)) return normalized
   const parts = normalized.split('/').filter(Boolean)
   return parts[parts.length - 1] || normalized
@@ -411,8 +399,9 @@ async function initialize(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const config = await window.api.imagesGetConfig()
-    if (config.rootPath) {
+    const config = await window.api.getConfig(IMAGESMANAGER_MODULE_NAME)
+    if (config?.rootPath) {
+      rootPath.value = config.rootPath
       await loadDirectory(config.rootPath)
       return
     }
@@ -530,7 +519,7 @@ async function deleteSelected(): Promise<void> {
         : `Deleted ${result.deletedCount} item(s), failed ${failedCount} item(s).`
 
     selectedPaths.value = []
-    await loadDirectory(currentPath.value || undefined)
+    await loadDirectory(currentPath.value)
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -545,6 +534,11 @@ async function openConfigPlaceholder(): Promise<void> {
     errorMessage.value = toErrorMessage(error)
   }
 }
+
+watch(currentPath, async (newValue) => {
+  console.log(newValue)
+  parentPath.value = await window.api.parentPath(newValue)
+})
 
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown)

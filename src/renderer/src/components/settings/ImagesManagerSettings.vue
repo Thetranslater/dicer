@@ -7,7 +7,7 @@ type ImageAttachmentMappingItem = {
   attachmentUrl: string
 }
 
-type ImageModuleConfig = {
+export type ImageModuleConfig = {
   rootPath: string | null
   attachmentMappings: Record<string, string>
 }
@@ -124,6 +124,7 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => {
+  console.log('unmount')
   void persistConfigOnExit()
 })
 </script>
@@ -152,13 +153,8 @@ onBeforeUnmount(() => {
     <div v-else class="mapping-list">
       <div v-for="(item, index) in mappings" :key="item.imagePath" class="mapping-row">
         <div class="image-path" :title="item.imagePath">{{ item.imagePath }}</div>
-        <input
-          :value="item.attachmentUrl"
-          class="url-input"
-          type="text"
-          placeholder="NGA attachment URL"
-          @input="onMappingInput(index, $event)"
-        />
+        <input :value="item.attachmentUrl" class="url-input" type="text" placeholder="NGA attachment URL"
+          @input="onMappingInput(index, $event)" />
       </div>
     </div>
   </section>

@@ -7,6 +7,7 @@ import { windowManager} from './windowManager'
 import { openFile, registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 import { OpenFileOptions } from '../renderer/src/utils/fileService'
+import { registerConfigIpcHandlers } from './configManager'
 
 // 注册本地文件协议
 function registerLocalProtocol(): void {
@@ -106,8 +107,9 @@ app.whenReady().then(() => {
 
   // 注册本地文件协议
   registerLocalProtocol()
-  registerImageManagerIpcHandlers()
   registerCoreIpcHandlers()
+  registerImageManagerIpcHandlers()
+  registerConfigIpcHandlers()
 
   //Menu template
   const template: Electron.MenuItemConstructorOptions[] = [

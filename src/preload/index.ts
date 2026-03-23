@@ -1,21 +1,10 @@
 ﻿import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-type ImageManagerConfig = {
-  rootPath: string | null
-}
-
 type ImageItem = {
   name: string
   path: string
   isDirectory: boolean
-  size: number
-}
-
-type ImageDirResult = {
-  rootPath: string
-  currentPath: string
-  items: ImageItem[]
 }
 
 type ImageAttachmentMappingItem = {
@@ -44,13 +33,23 @@ const api = {
     ipcRenderer.on('sys:openfilec', (_event, filePath, content, details) => callback(filePath, content, details))
   },
   openFileSignal: (options?) => ipcRenderer.invoke('sys:openfile', options),
+  /**
+   * 规范化一个路径，比如将D:\folder\..转成D:/
+   */
   normalizePath: (path:string) : Promise<string>=>ipcRenderer.invoke('sys:normalizepath', path),
+  /**
+   * 获得父路径，当参数是根目录时(D:/或D:)返回NULL
+   */
+  parentPath: (path : string) : Promise<string | null> => ipcRenderer.invoke('sys:parentpath', path),
+
   //core:config
+  /**
+   * 根据模块名获取对应config。如果输入不存在的模块名或该模块尚未配置，则返回undefined
+   */
   getConfig: (moduleName: string): Promise<any> => ipcRenderer.invoke('sys:getconfig', moduleName),
-  getProjectConfig: (): Promise<ProjectConfig> => ipcRenderer.invoke('sys:getprojectconfig'),
   loadProjectConfig: (configJson: Record<string, any>): Promise<ProjectConfig> =>
     ipcRenderer.invoke('sys:loadprojectconfig', configJson),
-  setConfig: (moduleName: string, configJson: unknown): Promise<any> =>
+  setConfig: (moduleName: string, configJson: unknown): Promise<boolean> =>
     ipcRenderer.invoke('sys:setconfig', moduleName, configJson),
   deleteConfig: (moduleName: string): Promise<boolean> =>
     ipcRenderer.invoke('sys:deleteconfig', moduleName),
@@ -68,15 +67,13 @@ const api = {
 
   // Image manager module (module:function)
   imagesGetFilePath: (file : File) : string => webUtils.getPathForFile(file),
-  imagesGetConfig: (): Promise<ImageManagerConfig> => ipcRenderer.invoke('images:get-config'),
   imagesSelectRoot: (): Promise<string | null> => ipcRenderer.invoke('images:select-root'),
-  imagesSetRoot: (rootPath: string): Promise<string> => ipcRenderer.invoke('images:set-root', rootPath),
   imagesGetAttachmentMappings: (): Promise<ImageAttachmentMappingsResult> =>
     ipcRenderer.invoke('images:get-attachment-mappings'),
   imagesSaveAttachmentMappings: (mappings: Record<string, string>): Promise<{ savedCount: number }> =>
     ipcRenderer.invoke('images:save-attachment-mappings', mappings),
   //check-ListDir
-  imagesListDir: (directoryPath?: string): Promise<ImageDirResult> => ipcRenderer.invoke('images:list-dir', directoryPath),
+  imagesListDir: (directoryPath: string): Promise<ImageItem[]> => ipcRenderer.invoke('images:listdir', directoryPath),
   imagesCreateFolder: (parentPath: string, folderName?: string): Promise<string> =>
     ipcRenderer.invoke('images:create-folder', parentPath, folderName),
   imagesRename: (targetPath: string, nextName: string): Promise<string> =>

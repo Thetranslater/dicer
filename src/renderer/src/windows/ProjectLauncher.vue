@@ -81,7 +81,10 @@ async function chooseCreateRootPath(): Promise<void> {
 
   try {
     const basePath = await chooseDirectory(false)
-    if (!basePath) return
+    if (!basePath) {
+      loading.value = false
+      return
+    }
     createRootPath.value = basePath
     updateRootPreview()
     infoMessage.value = 'Create path selected.'
@@ -99,10 +102,14 @@ async function openExistingProject(): Promise<void> {
 
   try {
     const basePath = await chooseDirectory(true)
-    if (!basePath) return
+    if (!basePath) {
+      loading.value = false
+      return
+    }
 
     const existingConfig = await readExistingProjectConfig(basePath)
     if (!existingConfig) {
+      loading.value = false
       throw new Error('No valid project.config.json found in selected folder.')
     }
 
@@ -126,6 +133,7 @@ async function createProject(): Promise<void> {
 
   try {
     if (!createRootPath.value) {
+      loading.value = false
       throw new Error('Please choose project root path first.')
     }
 

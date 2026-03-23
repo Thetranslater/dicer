@@ -5,6 +5,7 @@ import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 
 
 import { configManager } from './configManager'
 import { broadcast } from './windowManager'
+import { normalizePath } from './core'
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg',
@@ -28,7 +29,6 @@ type ImageItem = {
   name: string
   path: string
   isDirectory: boolean
-  size: number
 }
 
 type ImageAttachmentMappingItem = {
@@ -81,7 +81,7 @@ async function readConfig(): Promise<ImageManagerConfig> {
 async function writeConfig(config: ImageManagerConfig): Promise<void> {
   const normalized = normalizeConfig(config)
   configManager.set(IMAGE_CONFIG_MODULE, normalized)
-  broadcast('sys:onconfig', configManager.getProjectConfig())
+  broadcast('sys:onconfig', configManager.getAll())
 }
 
 function isPathWithinRoot(rootPath: string, targetPath: string): boolean {
@@ -124,34 +124,6 @@ async function createFolderWithAutoName(parentPath: string, baseName = 'New Fold
   const fullPath = join(parentPath, candidate)
   await mkdir(fullPath)
   return fullPath
-}
-
-async function toImageItems(directoryPath: string): Promise<ImageItem[]> {
-  const entries = await readdir(directoryPath, { withFileTypes: true })
-  const rawItems = await Promise.all(
-    entries.map(async (entry) => {
-      try {
-        const fullPath = join(directoryPath, entry.name)
-        const stats = await stat(fullPath)
-        const extension = extname(entry.name).toLowerCase()
-
-        if (!entry.isDirectory() && !IMAGE_EXTENSIONS.has(extension)) {
-          return null
-        }
-
-        return {
-          name: entry.name,
-          path: fullPath,
-          isDirectory: entry.isDirectory(),
-          size: stats.size
-        } satisfies ImageItem
-      } catch {
-        return null
-      }
-    })
-  )
-
-  return rawItems.filter((item): item is ImageItem => item !== null)
 }
 
 async function collectImageRelativePaths(rootPath: string, currentPath = rootPath): Promise<string[]> {
@@ -243,22 +215,6 @@ export function registerImageManagerIpcHandlers(): void {
     return rootPath
   })
 
-  ipcMain.handle('images:set-root', async (_event, nextRootPath: string) => {
-    const resolvedPath = resolve(nextRootPath)
-    if (!existsSync(resolvedPath)) {
-      throw new Error('Selected root directory does not exist')
-    }
-
-    const rootStat = await stat(resolvedPath)
-    if (!rootStat.isDirectory()) {
-      throw new Error('Selected root path is not a directory')
-    }
-
-    const config = await readConfig()
-    await writeConfig({ ...config, rootPath: resolvedPath })
-    return resolvedPath
-  })
-
   ipcMain.handle('images:get-attachment-mappings', async (): Promise<ImageAttachmentMappingsResult> => {
     const config = await readConfig()
     const rootPath = config.rootPath && existsSync(config.rootPath) ? resolve(config.rootPath) : null
@@ -306,17 +262,31 @@ export function registerImageManagerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('images:list-dir', async (_event, directoryPath?: string) => {
-    const rootPath = await requireRootPath()
-    const requestedPath = directoryPath ? resolve(directoryPath) : rootPath
-    const currentPath = existsSync(requestedPath) ? requestedPath : rootPath
-    const items = await toImageItems(currentPath)
+  ipcMain.handle('images:listdir', async (_event, directoryPath: string) => {
+    directoryPath = normalizePath(directoryPath)
+    const entries = await readdir(directoryPath, { withFileTypes: true })
+    const rawItems = await Promise.all(
+      entries.map(async (entry) => {
+        try {
+          const fullPath = join(directoryPath, entry.name)
+          const extension = extname(entry.name).toLowerCase()
 
-    return {
-      rootPath,
-      currentPath,
-      items
-    }
+          if (!entry.isDirectory() && !IMAGE_EXTENSIONS.has(extension)) {
+            return null
+          }
+
+          return {
+            name: entry.name,
+            path: normalizePath(fullPath),
+            isDirectory: entry.isDirectory(),
+          } satisfies ImageItem
+        } catch {
+          return null
+        }
+      })
+    )
+
+    return rawItems.filter((item): item is ImageItem => item !== null)
   })
 
   ipcMain.handle('images:create-folder', async (_event, parentPath: string, folderName?: string) => {
@@ -427,5 +397,3 @@ export function registerImageManagerIpcHandlers(): void {
     return importImages(targetDirectory, sourceFilePaths)
   })
 }
-
-

@@ -1,20 +1,9 @@
 ﻿import { ElectronAPI } from '@electron-toolkit/preload'
 
-type ImageManagerConfig = {
-  rootPath: string | null
-}
-
 type ImageItem = {
   name: string
   path: string
   isDirectory: boolean
-  size: number
-}
-
-type ImageDirResult = {
-  rootPath: string
-  currentPath: string
-  items: ImageItem[]
 }
 
 type ImageAttachmentMappingItem = {
@@ -38,11 +27,11 @@ export interface IAPI {
   openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => void
   openFileSignal: (options?) => Promise<[string | string[], any, any]>
   normalizePath: (path : string) => Promise<string>
+  parentPath: (path : string) => Promise<string | null>
 
   getConfig: (moduleName: string) => Promise<any>
-  getProjectConfig: () => Promise<ProjectConfig>
   loadProjectConfig: (configJson: Record<string, any>) => Promise<ProjectConfig>
-  setConfig: (moduleName: string, configJson: unknown) => Promise<any>
+  setConfig: (moduleName: string, configJson: unknown) => Promise<boolean>
   deleteConfig: (moduleName: string) => Promise<boolean>
   onConfig: (callback: (projectConfig: ProjectConfig) => void) => void
 
@@ -52,12 +41,10 @@ export interface IAPI {
   onSettingsNavigate: (callback: (route: string) => void) => () => void
 
   imagesGetFilePath: (file: File) => string
-  imagesGetConfig: () => Promise<ImageManagerConfig>
   imagesSelectRoot: () => Promise<string | null>
-  imagesSetRoot: (rootPath: string) => Promise<string>
   imagesGetAttachmentMappings: () => Promise<ImageAttachmentMappingsResult>
   imagesSaveAttachmentMappings: (mappings: Record<string, string>) => Promise<{ savedCount: number }>
-  imagesListDir: (directoryPath?: string) => Promise<ImageDirResult>
+  imagesListDir: (directoryPath: string) => Promise<ImageItem[]>
   imagesCreateFolder: (parentPath: string, folderName?: string) => Promise<string>
   imagesRename: (targetPath: string, nextName: string) => Promise<string>
   imagesMove: (sourcePath: string, targetDirectory: string) => Promise<string>

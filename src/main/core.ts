@@ -34,6 +34,11 @@ function buildDirectoryNode(directoryPath: string): FSNode {
 export function normalizePath(path : string) : string {
   return normalize(path).replace(/\\/g, '/')
 }
+export function parentPath(path : string) : string | null {
+  const normalize = normalizePath(path)
+  if(/^[A-Za-z]:\/?$/.test(normalize)) return null
+  return dirname(normalize)
+}
 
 function normalizeSettingsRoute(route?: string): string {
   if (!route) return '/project'
@@ -74,7 +79,7 @@ export async function openFile(options?: OpenFileOptions): Promise<[string | str
   } else {
     path = options.path
   }
-
+  path = path.map((value)=>normalizePath(value))
   for (const value of path) {
     if (!existsSync(value)){
       content.push(null)
@@ -160,29 +165,18 @@ export function registerCoreIpcHandlers(): void {
   ipcMain.handle('sys:normalizepath', (_e, path: string)=>{
     return normalizePath(path)
   })
-  ipcMain.handle('sys:getconfig', (_e, moduleName: string) => {
-    return configManager.get(moduleName)
+  ipcMain.handle('sys:parentpath',(_e, path : string)=>{
+    return parentPath(path)
   })
-
-  ipcMain.handle('sys:getprojectconfig', () => {
-    return configManager.getProjectConfig()
-  })
-
   ipcMain.handle('sys:loadprojectconfig', (_e, configJson: Record<string, any>) => {
     const projectConfig = configManager.load(configJson)
     broadcast('sys:onconfig', projectConfig)
     return projectConfig
   })
 
-  ipcMain.handle('sys:setconfig', (_e, moduleName: string, configJson: unknown) => {
-    const result = configManager.set(moduleName, configJson)
-    broadcast('sys:onconfig', configManager.getProjectConfig())
-    return result
-  })
-
   ipcMain.handle('sys:deleteconfig', (_e, moduleName: string) => {
     const deleted = configManager.delete(moduleName)
-    broadcast('sys:onconfig', configManager.getProjectConfig())
+    broadcast('sys:onconfig', configManager.getAll())
     return deleted
   })
 

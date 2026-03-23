@@ -445,14 +445,4 @@ export class Expression extends Evaluable {
     }
     return this.root.evaluate()
   }
-
-  static isValid(expression: string): boolean {
-    try {
-      const expr = new Expression(expression)
-      expr.evaluate()
-      return true
-    } catch {
-      return false
-    }
-  }
 }
