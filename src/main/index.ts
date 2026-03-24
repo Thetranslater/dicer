@@ -1,4 +1,5 @@
 import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import {updateElectronApp} from 'update-electron-app'
 import { electronApp, optimizer} from '@electron-toolkit/utils'
 // import { net } from 'electron'
 // import { URL } from 'url'
@@ -31,6 +32,8 @@ function registerLocalProtocol(): void {
     return new Response(result[1] as any)
   })
 }
+
+updateElectronApp()
 
 // 测试上传图片
 // function testUploadImage(): void {
@@ -117,7 +120,7 @@ app.whenReady().then(() => {
       label: '文件',
       submenu: [
         {
-          label: '新建',
+          label: '新建...',
           accelerator: 'CmdOrCtrl+N',
           click: () => {
             windowManager.get('editor')?.webContents.send('menu-file-new')

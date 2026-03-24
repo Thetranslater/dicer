@@ -1,4 +1,4 @@
-﻿import { contextBridge, ipcRenderer, webUtils } from 'electron'
+﻿import { IpcMainServiceWorker, contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 type ImageItem = {
@@ -33,6 +33,10 @@ const api = {
     ipcRenderer.on('sys:openfilec', (_event, filePath, content, details) => callback(filePath, content, details))
   },
   openFileSignal: (options?) => ipcRenderer.invoke('sys:openfile', options),
+  /**
+   * 删除一个（组）文件或文件夹
+   */
+  delete: (path : string | string[], options?: any)=> ipcRenderer.invoke('sys:delete', path, options),
   /**
    * 规范化一个路径，比如将D:\folder\..转成D:/
    */
@@ -80,8 +84,6 @@ const api = {
     ipcRenderer.invoke('images:rename', targetPath, nextName),
   imagesMove: (sourcePath: string, targetDirectory: string): Promise<string> =>
     ipcRenderer.invoke('images:move', sourcePath, targetDirectory),
-  imagesDelete: (targetPaths: string[]): Promise<{ deletedCount: number; failedPaths: string[] }> =>
-    ipcRenderer.invoke('images:delete', targetPaths),
   imagesImportDialog: (targetDirectory: string): Promise<string[]> =>
     ipcRenderer.invoke('images:import-dialog', targetDirectory),
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]): Promise<string[]> =>

@@ -1,11 +1,12 @@
 ﻿import { dialog, ipcMain } from 'electron'
-import { readFileSync, statSync, readdirSync, writeFileSync, existsSync, mkdirSync} from 'fs'
+import { readFileSync, statSync, readdirSync, writeFileSync, existsSync, mkdirSync, rmSync} from 'fs'
 import { basename, extname, join, dirname, normalize } from 'path'
 import assert from 'assert'
 
 import type { OpenFileOptions, OpenFileDetails, FSNode, SaveFileOptions, SaveFileDetails } from '../renderer/src/utils/fileService'
 import { configManager } from './configManager'
 import { broadcast, windowManager } from './windowManager'
+import { defaultServerMainFields } from 'vite'
 
 function buildDirectoryNode(directoryPath: string): FSNode {
   const children: FSNode[] = []
@@ -116,7 +117,6 @@ export async function openFile(options?: OpenFileOptions): Promise<[string | str
   const rcontent = content.length === 1 ? content[0] : content
   return [rpath, rcontent, details]
 }
-
 export async function saveFile(content: string | Buffer, options?: SaveFileOptions): Promise<SaveFileDetails> {
   const details: SaveFileDetails = {
     broadcastInfo: options?.broadcastInfo,
@@ -146,6 +146,7 @@ export async function saveFile(content: string | Buffer, options?: SaveFileOptio
       flag:'w',
     })
     details.isDialogCanceled = false
+    details.savedPath = normalizePath(options.path)
     return details
   }
 
@@ -155,6 +156,7 @@ export async function saveFile(content: string | Buffer, options?: SaveFileOptio
 
   if (!selected.canceled && selected.filePath) {
     writeFileSync(selected.filePath, content)
+    details.savedPath = normalizePath(selected.filePath)
   } else if (details.dev) {
     details.dev.message += 'dialog canceled; '
   }
@@ -162,7 +164,17 @@ export async function saveFile(content: string | Buffer, options?: SaveFileOptio
   details.isDialogCanceled = selected.canceled
   return details
 }
-
+export function deleteFileOrDir(path : string | string[], _options? : any){
+  const paths : string[] = typeof path === 'string' ? [path] : path
+  paths.forEach((path) => {
+    if(path.length > 0 ){
+      const normalize_path = normalizePath(path)
+      if(existsSync(normalize_path)){
+        rmSync(normalize_path, { recursive: true, force: false})
+      }
+    }
+  })
+}
 export function registerCoreIpcHandlers(): void {
   ipcMain.handle('sys:openfile', (_e, options) => {
     return openFile(options)
@@ -170,6 +182,7 @@ export function registerCoreIpcHandlers(): void {
   ipcMain.handle('sys:savefile', (_e, content, options) => {
     return saveFile(content, options)
   })
+  ipcMain.handle('sys:delete', (_e, path, options)=>deleteFileOrDir(path, options))
   ipcMain.handle('sys:normalizepath', (_e, path: string)=>{
     return normalizePath(path)
   })

@@ -20,6 +20,7 @@ export type SaveFileOptions = {
 export type SaveFileDetails = {
   broadcastInfo?:string
   isDialogCanceled?:boolean
+  savedPath?: string
   dev?:{
     source?:string
     message?:string

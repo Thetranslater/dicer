@@ -343,43 +343,6 @@ export function registerImageManagerIpcHandlers(): void {
     return nextPath
   })
 
-  ipcMain.handle('images:delete', async (_event, targetPaths: string[]) => {
-    const rootPath = await requireRootPath()
-    const inputPaths = Array.isArray(targetPaths) ? targetPaths : []
-    const normalizedPaths = Array.from(
-      new Set(inputPaths.filter((p): p is string => typeof p === 'string' && p.trim().length > 0))
-    )
-
-    let deletedCount = 0
-    const failedPaths: string[] = []
-
-    for (const targetPath of normalizedPaths) {
-      const resolvedTarget = resolve(targetPath)
-
-      if (!isPathWithinRoot(rootPath, resolvedTarget)) {
-        failedPaths.push(targetPath)
-        continue
-      }
-
-      if (!existsSync(resolvedTarget)) {
-        failedPaths.push(targetPath)
-        continue
-      }
-
-      try {
-        await rm(resolvedTarget, { recursive: true, force: false })
-        deletedCount += 1
-      } catch {
-        failedPaths.push(targetPath)
-      }
-    }
-
-    return {
-      deletedCount,
-      failedPaths
-    }
-  })
-
   ipcMain.handle('images:import-dialog', async (_event, targetDirectory: string) => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],

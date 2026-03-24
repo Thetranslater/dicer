@@ -10,8 +10,10 @@ import Editor from '../components/Editor.vue'
 
 <style scoped>
 .app-container {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }

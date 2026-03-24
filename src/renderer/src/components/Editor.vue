@@ -20,7 +20,12 @@ import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
 const { setEditor } = useEditorStore()
 
 //#region 'var set'
-const currentFilePath = ref<string | null>(null)
+const SAVE_INTERVAL_MS = 3 * 60 * 1000
+const relatedPath = ref('')
+const saveStatus = ref('Ready')
+const isDirty = ref(false)
+const suppressDirtyTracking = ref(false)
+let autoSaveTimer: number | null = null
 const editor = useEditor({
   extensions: [
     StarterKit,
@@ -55,6 +60,10 @@ const editor = useEditor({
     })
   ],
   content: '<p>欢迎使用安科编辑器...</p>',
+  onUpdate: () => {
+    if (suppressDirtyTracking.value) return
+    isDirty.value = true
+  }
 })
 const fontFamilies = [
   { label: '默认', value: 'default' },
@@ -122,6 +131,10 @@ type ImageExportConfig = {
   attachmentMappings: Record<string, string>
 }
 
+type SaveTrigger = 'manual' | 'autosave' | 'switch'
+
+const hasRelatedPath = computed(() => relatedPath.value.trim().length > 0)
+
 function normalizeImageExportConfig(raw: unknown): ImageExportConfig | undefined {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
   const obj = raw as Record<string, unknown>
@@ -146,33 +159,133 @@ function normalizeImageExportConfig(raw: unknown): ImageExportConfig | undefined
 
   return { rootPath, attachmentMappings }
 }
-//#endregion
 
-//#region 'Ipc Callbacks'
-const handleEditorSave = (details?: SaveFileDetails) => {
-  if (!editor.value) return
-  if (details?.broadcastInfo !== 'menu-savefile') return
+function setSaveStatus(message: string, extra?: Record<string, unknown>): void {
+  saveStatus.value = message
+  console.log('[EditorSave]', message, {
+    relatedPath: relatedPath.value,
+    hasRelatedPath: hasRelatedPath.value,
+    isDirty: isDirty.value,
+    ...(extra ?? {})
+  })
+}
 
-  const options: SaveFileOptions = {
+function inferFormatFromPath(path: string): 'html' | 'json' {
+  const ext = path.split('.').pop()?.toLowerCase()
+  return ext === 'json' ? 'json' : 'html'
+}
+
+function serializeEditorContent(format: 'html' | 'json'): string {
+  if (!editor.value) return ''
+  if (format === 'json') {
+    return JSON.stringify(editor.value.getJSON(), null, 2)
+  }
+  return editor.value.getHTML()
+}
+
+function buildEditorSaveOptions(path?: string): SaveFileOptions {
+  return {
+    path,
     broadcastInfo: 'menu-savefile',
     isBinary: false,
     encoding: 'utf-8',
     dialogfilters: [
-      { name: 'HTML', extensions: ['html', 'htm'] }
+      { name: 'HTML', extensions: ['html', 'htm'] },
+      { name: 'JSON', extensions: ['json'] }
     ],
     dev: {
-      source: 'menu-save',
-      message: '菜单保存，返回编辑器保存的HTML内容'
+      source: 'editor-save',
+      message: 'Editor unified save'
     }
   }
+}
 
-  const content = editor.value.getHTML()
-  if (content !== null) {
-    window.api.saveFileSignal(
-      content,
-      options
-    )
+async function saveEditorContent(trigger: SaveTrigger, forceChoosePath = false): Promise<boolean> {
+  if (!editor.value) return false
+
+  const directPath = !forceChoosePath && hasRelatedPath.value ? relatedPath.value : undefined
+  const initialFormat = directPath ? inferFormatFromPath(directPath) : 'html'
+  const initialContent = serializeEditorContent(initialFormat)
+  const options = buildEditorSaveOptions(directPath)
+
+  let details: SaveFileDetails | undefined
+  try {
+    details = await window.api.saveFileSignal(initialContent, options) as SaveFileDetails
+  } catch (error) {
+    setSaveStatus(`Save failed (${trigger})`, { error })
+    return false
   }
+
+  if (details?.isDialogCanceled) {
+    setSaveStatus(`Save canceled (${trigger})`)
+    return false
+  }
+
+  const resolvedPath = details?.savedPath ?? directPath
+  if (!resolvedPath) {
+    setSaveStatus(`Save failed (${trigger}): no target path`)
+    return false
+  }
+
+  relatedPath.value = resolvedPath
+  const finalFormat = inferFormatFromPath(resolvedPath)
+
+  if (!directPath && finalFormat !== initialFormat) {
+    const rewriteContent = serializeEditorContent(finalFormat)
+    await window.api.saveFileSignal(rewriteContent, buildEditorSaveOptions(resolvedPath))
+  }
+
+  isDirty.value = false
+  setSaveStatus(`Saved (${trigger})`, { path: resolvedPath, format: finalFormat })
+  return true
+}
+
+async function handleBeforeFileSwitch(): Promise<boolean> {
+  if (!isDirty.value) return true
+
+  if (hasRelatedPath.value) {
+    const saved = await saveEditorContent('switch')
+    if (!saved) {
+      setSaveStatus('Switch canceled: save failed')
+      return false
+    }
+    return true
+  }
+
+  const shouldSave = window.confirm('Current document has unsaved changes. Save before opening another file?')
+  if (!shouldSave) {
+    setSaveStatus('Switched without saving previous content')
+    return true
+  }
+
+  const saved = await saveEditorContent('switch', true)
+  if (!saved) {
+    setSaveStatus('Switch canceled: previous content not saved')
+    return false
+  }
+
+  return true
+}
+
+function startAutoSaveLoop(): void {
+  autoSaveTimer = window.setInterval(async () => {
+    if (!isDirty.value) return
+
+    if (!hasRelatedPath.value) {
+      setSaveStatus('Auto-save failed: no file path')
+      return
+    }
+
+    await saveEditorContent('autosave')
+  }, SAVE_INTERVAL_MS)
+}
+//#endregion
+
+//#region 'Ipc Callbacks'
+const handleEditorSave = async (details?: SaveFileDetails) => {
+  if (!editor.value) return
+  if (details?.broadcastInfo !== 'menu-savefile') return
+  await saveEditorContent('manual')
 }
 
 const handleEditorSaveAs = async (details?: SaveFileDetails) => {
@@ -203,32 +316,50 @@ const handleEditorSaveAs = async (details?: SaveFileDetails) => {
   }
 
   const bbs = htmlToNgaBBS(html, { imageConfig })
-  window.api.saveFileSignal(bbs, options)
+  const saveDetails = await window.api.saveFileSignal(bbs, options) as SaveFileDetails
+  if (saveDetails?.isDialogCanceled) {
+    setSaveStatus('Save as BBS canceled')
+    return
+  }
+  setSaveStatus('Saved as .bbs', { path: saveDetails?.savedPath ?? null })
 }
 
 function IpcCallbackRegister() {
-  FileService.OpenFileListeners.set('editor-opencontent', (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
+  FileService.OpenFileListeners.set('editor-opencontent', async (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
     if (!editor.value) return
     if (details?.broadcastInfo !== 'menu-openfile' || details?.isDialogCanceled) return
-    if (content) {
-      const ext = (filePath as string).split('.').pop()?.toLowerCase()
+    if (!content) return
+
+    const proceed = await handleBeforeFileSwitch()
+    if (!proceed) return
+
+    const targetPath = typeof filePath === 'string' ? filePath : filePath[0]
+    const ext = targetPath?.split('.').pop()?.toLowerCase()
+
+    suppressDirtyTracking.value = true
+    try {
       if (ext === 'json') {
         try {
           const json = JSON.parse(content as string)
           editor.value.commands.setContent(json)
-          currentFilePath.value = filePath as string
         } catch (e) {
           console.error('Failed to parse JSON:', e)
+          setSaveStatus('Open failed: invalid JSON')
+          return
         }
-      } else if (ext === 'html' || ext === 'htm') {
+      } else {
         editor.value.commands.setContent(content as string)
-        currentFilePath.value = filePath as string
       }
+
+      relatedPath.value = targetPath ?? ''
+      isDirty.value = false
+      setSaveStatus('File opened', { path: relatedPath.value })
+    } finally {
+      suppressDirtyTracking.value = false
     }
   })
-  //image insertion handler
+
   FileService.OpenFileListeners.set('editor-openimage', (filePath: string | string[], _content, details?: OpenFileDetails) => {
-    console.log('reply2')
     if (!editor.value) return
     if (details?.broadcastInfo !== 'editor-insertimage' || details?.isDialogCanceled) return
 
@@ -244,6 +375,8 @@ function IpcCallbackRegister() {
 onMounted(() => {
   IpcCallbackRegister()
   window.addEventListener('mousedown', handleGlobalMouseDown)
+  startAutoSaveLoop()
+  setSaveStatus('Editor ready')
 })
 
 //#region 'basic function': bold, italic, font....
@@ -343,6 +476,10 @@ watch(editor, (newInstance) => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('mousedown', handleGlobalMouseDown)
+  if (autoSaveTimer !== null) {
+    window.clearInterval(autoSaveTimer)
+    autoSaveTimer = null
+  }
   editor.value?.destroy()
 })
 </script>
@@ -468,8 +605,7 @@ onBeforeUnmount(() => {
         <button @click="editor.chain().focus().addRowAfter().run()" :disabled="!editor.can().addRowAfter()" title="添加行">
           =
         </button>
-        <button @click="editor.chain().focus().deleteTable().run()" :disabled="!editor.can().deleteTable()"
-          title="删除表格">
+        <button @click="editor.chain().focus().deleteTable().run()" :disabled="!editor.can().deleteTable()" title="删除表格">
           &#10005;
         </button>
       </div>
@@ -535,6 +671,11 @@ onBeforeUnmount(() => {
     <div class="editor-wrapper">
       <EditorContent :editor="editor" class="editor-content" />
     </div>
+
+    <div class="save-status-bar">
+      <span class="save-status-text">{{ saveStatus }}</span>
+      <span class="save-status-path">{{ hasRelatedPath ? relatedPath : 'No related file path' }}</span>
+    </div>
   </div>
 </template>
 
@@ -544,7 +685,9 @@ onBeforeUnmount(() => {
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background: #fff;
+  min-height: 0;
+  overflow: hidden;
+  background: #e9edf2;
 }
 
 .toolbar {
@@ -654,15 +797,48 @@ onBeforeUnmount(() => {
 }
 
 .editor-wrapper {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   padding: 20px 40px;
+  background: #e9edf2;
 }
 
 .editor-content {
   max-width: 800px;
   margin: 0 auto;
   min-height: 100%;
+  background: #fff;
+  border: 1px solid #d4dbe3;
+  border-radius: 6px;
+  padding: 24px 28px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.save-status-bar {
+  height: 24px;
+  padding: 0 10px;
+  border-top: 1px solid #d5dbe3;
+  background: #f3f6fa;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.save-status-text,
+.save-status-path {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.save-status-path {
+  color: #6b7280;
+  text-align: right;
 }
 
 .editor-content :deep(.tiptap) {

@@ -26,6 +26,7 @@ export interface IAPI {
   saveFileSignal: (content: string | Buffer, options?) => Promise<any>
   openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => void
   openFileSignal: (options?) => Promise<[string | string[], any, any]>
+  delete: (path: string | string[], options? : any) => void
   normalizePath: (path : string) => Promise<string>
   parentPath: (path : string) => Promise<string | null>
 
@@ -48,7 +49,6 @@ export interface IAPI {
   imagesCreateFolder: (parentPath: string, folderName?: string) => Promise<string>
   imagesRename: (targetPath: string, nextName: string) => Promise<string>
   imagesMove: (sourcePath: string, targetDirectory: string) => Promise<string>
-  imagesDelete: (targetPaths: string[]) => Promise<{ deletedCount: number; failedPaths: string[] }>
   imagesImportDialog: (targetDirectory: string) => Promise<string[]>
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]) => Promise<string[]>
 }

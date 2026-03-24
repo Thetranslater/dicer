@@ -510,16 +510,10 @@ async function deleteSelected(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const result = await window.api.imagesDelete(targets)
-    const failedCount = result.failedPaths.length
-
-    statusMessage.value =
-      failedCount === 0
-        ? `Deleted ${result.deletedCount} item(s).`
-        : `Deleted ${result.deletedCount} item(s), failed ${failedCount} item(s).`
+    await window.api.delete(targets)
 
     selectedPaths.value = []
-    await loadDirectory(currentPath.value)
+    refresh()
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
