@@ -1,10 +1,66 @@
-function normalizeText(text: string): string {
+﻿function normalizeText(text: string): string {
   return text.replace(/\u00a0/g, ' ')
 }
 
 function wrap(tag: string, content: string): string {
   if (!content) return ''
   return `[${tag}]${content}[/${tag.split('=')[0]}]`
+}
+
+export type ImageModuleConfig = {
+  rootPath: string | null
+  attachmentMappings: Record<string, string>
+}
+
+export type HtmlToNgaBBSOptions = {
+  imageConfig?: Partial<ImageModuleConfig>
+}
+
+function normalizePath(input: string): string {
+  let path = input.replace(/\\/g, '/')
+  path = path.replace(/\/+/g, '/')
+  path = path.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
+  return path.replace(/^[A-Z]/, (match)=>match.toLowerCase())
+}
+
+function parseAppImagePath(src: string): string | null {
+  if (!src.startsWith('app://')) return null
+
+  const raw = src.slice('app://'.length)
+  try {
+    return normalizePath(decodeURIComponent(raw))
+  } catch {
+    return normalizePath(raw)
+  }
+}
+
+function toRelativePath(absolutePath: string, rootPath: string): string | null {
+  const abs = normalizePath(absolutePath).replace(/\/+$/, '')
+  const root = normalizePath(rootPath).replace(/\/+$/, '')
+
+  if (!root) return null
+  if (abs === root) return null
+  if (!abs.startsWith(`${root}/`)) return null
+
+  return abs.slice(root.length + 1).replace(/^\/+/, '')
+}
+
+function resolveImageSource(src: string, options?: HtmlToNgaBBSOptions): string {
+  const config = options?.imageConfig
+  if (!config) return src
+  if (!config.rootPath || !config.attachmentMappings) return src
+
+  const absolutePath = parseAppImagePath(src)
+  if (!absolutePath) return src
+
+  const relativePath = toRelativePath(absolutePath, config.rootPath)
+  if (!relativePath) return src
+
+  const mapped = config.attachmentMappings[relativePath]
+  if (typeof mapped !== 'string') return src
+
+  const trimmed = mapped.trim()
+  return trimmed || src
 }
 
 function applyInlineStyle(el: HTMLElement, content: string): string {
@@ -36,15 +92,15 @@ function applyBlockStyle(el: HTMLElement, content: string): string {
   return out
 }
 
-function  serializeChildren(node: Node): string {
-  return Array.from(node.childNodes).map(serializeNode).join('')
+function serializeChildren(node: Node, options?: HtmlToNgaBBSOptions): string {
+  return Array.from(node.childNodes).map((child) => serializeNode(child, options)).join('')
 }
 
-function serializeList(el: HTMLElement): string {
+function serializeList(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
   const items = Array.from(el.children)
     .filter((child) => child.tagName.toLowerCase() === 'li')
     .map((li) => {
-      const content = serializeChildren(li).trim()
+      const content = serializeChildren(li, options).trim()
       return content ? `[*]${content}\n` : ''
     })
     .join('')
@@ -53,7 +109,7 @@ function serializeList(el: HTMLElement): string {
   return `[list]\n${items}[/list]\n\n`
 }
 
-function serializeTable(el: HTMLElement): string {
+function serializeTable(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
   const rows = Array.from(el.querySelectorAll(':scope > tbody > tr, :scope > tr'))
   if (rows.length === 0) return ''
 
@@ -64,7 +120,7 @@ function serializeTable(el: HTMLElement): string {
           const tag = cell.tagName.toLowerCase()
           return tag === 'td' || tag === 'th'
         })
-        .map((cell) => `[td]${serializeChildren(cell).trim()}[/td]`)
+        .map((cell) => `[td]${serializeChildren(cell, options).trim()}[/td]`)
         .join('')
       return cells ? `[tr]${cells}[/tr]` : ''
     })
@@ -74,15 +130,15 @@ function serializeTable(el: HTMLElement): string {
   return `[table]\n${lines.join('\n')}\n[/table]\n\n`
 }
 
-function serializeDetails(el: HTMLElement): string {
+function serializeDetails(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
   const summaryEl = Array.from(el.children).find(
     (child) => child.tagName.toLowerCase() === 'summary'
   ) as HTMLElement | undefined
-  const summary = summaryEl ? serializeChildren(summaryEl).trim() : ''
+  const summary = summaryEl ? serializeChildren(summaryEl, options).trim() : ''
 
   const content = Array.from(el.childNodes)
     .filter((child) => child !== summaryEl)
-    .map(serializeNode)
+    .map((child) => serializeNode(child, options))
     .join('')
     .trim()
 
@@ -93,7 +149,7 @@ function serializeDetails(el: HTMLElement): string {
   return `[collapse=${summary}]\n${content}\n[/collapse]\n\n`
 }
 
-function serializeNode(node: Node): string {
+function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return normalizeText(node.textContent || '')
   }
@@ -110,70 +166,71 @@ function serializeNode(node: Node): string {
       return '\n'
     case 'strong':
     case 'b':
-      return wrap('b', serializeChildren(el))
+      return wrap('b', serializeChildren(el, options))
     case 'em':
     case 'i':
-      return wrap('i', serializeChildren(el))
+      return wrap('i', serializeChildren(el, options))
     case 'u':
-      return wrap('u', serializeChildren(el))
+      return wrap('u', serializeChildren(el, options))
     case 's':
     case 'strike':
     case 'del':
-      return wrap('del', serializeChildren(el))
+      return wrap('del', serializeChildren(el, options))
     case 'sub':
-      return wrap('sub', serializeChildren(el))
+      return wrap('sub', serializeChildren(el, options))
     case 'sup':
-      return wrap('sup', serializeChildren(el))
+      return wrap('sup', serializeChildren(el, options))
     case 'a': {
       const href = el.getAttribute('href') || ''
-      const text = serializeChildren(el) || href
+      const text = serializeChildren(el, options) || href
       return href ? `[url=${href}]${text}[/url]` : text
     }
     case 'img': {
       const src = el.getAttribute('src') || ''
-      return src ? `[img]${src}[/img]` : ''
+      const resolved = resolveImageSource(src, options)
+      return resolved ? `[img]${resolved}[/img]` : ''
     }
     case 'blockquote': {
-      const content = serializeChildren(el).trim()
+      const content = serializeChildren(el, options).trim()
       return content ? `[quote]\n${content}\n[/quote]\n\n` : ''
     }
     case 'ul':
     case 'ol':
-      return serializeList(el)
+      return serializeList(el, options)
     case 'details':
-      return serializeDetails(el)
+      return serializeDetails(el, options)
     case 'table':
-      return serializeTable(el)
+      return serializeTable(el, options)
     case 'h1':
     case 'h2':
     case 'h3':
     case 'h4':
     case 'h5':
     case 'h6': {
-      const content = serializeChildren(el).trim()
+      const content = serializeChildren(el, options).trim()
       return content ? `[h]${content}[/h]\n\n` : ''
     }
     case 'hr':
       return '[h][/h]\n\n'
     case 'p':
     case 'div': {
-      const inner = serializeChildren(el)
+      const inner = serializeChildren(el, options)
       const block = applyBlockStyle(el, inner).trim()
       return block ? `${block}\n\n` : '\n'
     }
     case 'span': {
-      const inner = serializeChildren(el)
+      const inner = serializeChildren(el, options)
       return applyInlineStyle(el, inner)
     }
     default:
-      return serializeChildren(el)
+      return serializeChildren(el, options)
   }
 }
 
-export function htmlToNgaBBS(html: string): string {
+export function htmlToNgaBBS(html: string, options?: HtmlToNgaBBSOptions): string {
   const parser = new DOMParser()
   const doc = parser.parseFromString(html, 'text/html')
-  const raw = serializeChildren(doc.body)
+  const raw = serializeChildren(doc.body, options)
 
   return raw
     .replace(/\n{3,}/g, '\n\n')

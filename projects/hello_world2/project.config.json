@@ -1,4 +1,12 @@
 {
   "root": "D:/Programs/projects/dicer/dicer/projects/hello_world2",
-  "name": "hello_world2"
+  "name": "hello_world2",
+  "image": {
+    "rootPath": "D:/Programs/projects/dicer/dicer/projects/hello_world2/images",
+    "attachmentMappings": {
+      "20220612164733_72d8b.jpg": "./mon_202603/23/9bQ2x-eqfbK2fT3cSn0-m8.jpg",
+      "2YSeem4vF6LnmN0.thumb.1000_0.jpg": "./mon_202603/23/9bQ2x-3pf6ZeT3cSrs-rs.jpg",
+      "y9SdZLzOtbdDyVg.thumb.1000_0.jpeg": "./mon_202603/23/9bQ2x-40tlZkT3cSrs-rs.jpeg"
+    }
+  }
 }

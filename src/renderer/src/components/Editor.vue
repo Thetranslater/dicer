@@ -116,6 +116,36 @@ const colors = [
 ]
 const showColorPalette = ref(false)
 const colorPickerRef = ref<HTMLElement | null>(null)
+
+type ImageExportConfig = {
+  rootPath: string | null
+  attachmentMappings: Record<string, string>
+}
+
+function normalizeImageExportConfig(raw: unknown): ImageExportConfig | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const obj = raw as Record<string, unknown>
+
+  const rootPath =
+    typeof obj.rootPath === 'string' && obj.rootPath.trim().length > 0
+      ? obj.rootPath
+      : null
+
+  const attachmentMappings: Record<string, string> = {}
+  const rawMappings = obj.attachmentMappings
+  if (rawMappings && typeof rawMappings === 'object' && !Array.isArray(rawMappings)) {
+    for (const [key, value] of Object.entries(rawMappings as Record<string, unknown>)) {
+      if (typeof value !== 'string') continue
+      const normalizedKey = key.replace(/\\/g, '/').replace(/^\/+/, '').trim()
+      if (!normalizedKey) continue
+      const url = value.trim()
+      if (!url) continue
+      attachmentMappings[normalizedKey] = url
+    }
+  }
+
+  return { rootPath, attachmentMappings }
+}
 //#endregion
 
 //#region 'Ipc Callbacks'
@@ -145,7 +175,7 @@ const handleEditorSave = (details?: SaveFileDetails) => {
   }
 }
 
-const handleEditorSaveAs = (details?: SaveFileDetails) => {
+const handleEditorSaveAs = async (details?: SaveFileDetails) => {
   if (!editor.value) return
   if (details?.broadcastInfo !== 'menu-saveas-bbs') return
 
@@ -163,7 +193,16 @@ const handleEditorSaveAs = (details?: SaveFileDetails) => {
   }
 
   const html = editor.value.getHTML()
-  const bbs = htmlToNgaBBS(html)
+
+  let imageConfig: ImageExportConfig | undefined
+  try {
+    const rawConfig = await window.api.getConfig('image')
+    imageConfig = normalizeImageExportConfig(rawConfig)
+  } catch (error) {
+    console.warn('[Editor] failed to read image config, fallback to original image src', error)
+  }
+
+  const bbs = htmlToNgaBBS(html, { imageConfig })
   window.api.saveFileSignal(bbs, options)
 }
 
