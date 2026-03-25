@@ -1,10 +1,10 @@
-﻿function randomInt(min: number, max: number): number {
+﻿async function randomInt(min: number, max: number) {
   const _min = Math.ceil(min)
   const _max = Math.floor(max)
   if (_min > _max) {
     throw new Error(`Invalid random range: [${_min}, ${_max}]`)
   }
-  return Math.floor(Math.random() * (_max - _min + 1)) + _min
+  return Math.floor(await window.api.rand() * (_max - _min + 1)) + _min
 }
 
 type Operator = '+' | '-' | '*' | '/'
@@ -25,7 +25,7 @@ function isOperatorToken(token: string): token is Operator {
 }
 
 abstract class Evaluable {
-  abstract evaluate(): number
+  abstract evaluate()
 }
 
 class EvaluateWrapper extends Evaluable {
@@ -36,7 +36,7 @@ class EvaluateWrapper extends Evaluable {
     this.value = v
   }
 
-  evaluate(): number {
+  async evaluate(): Promise<number> {
     return this.value
   }
 }
@@ -53,13 +53,13 @@ class Dice extends Evaluable {
     this.max = max ?? new EvaluateWrapper(10)
   }
 
-  evaluate(): number {
+  async evaluate() {
     if (!Number.isInteger(this.repeat) || this.repeat <= 0) {
       throw new Error(`Invalid dice repeat count: ${this.repeat}`)
     }
 
-    const evaluatedMin = Math.floor(this.min.evaluate())
-    const evaluatedMax = Math.floor(this.max.evaluate())
+    const evaluatedMin = Math.floor(await this.min.evaluate())
+    const evaluatedMax = Math.floor(await this.max.evaluate())
 
     if (evaluatedMin > evaluatedMax) {
       throw new Error(`Dice range min cannot be greater than max: ${evaluatedMin} > ${evaluatedMax}`)
@@ -67,7 +67,7 @@ class Dice extends Evaluable {
 
     let result = 0
     for (let i = 0; i < this.repeat; i++) {
-      result += randomInt(evaluatedMin, evaluatedMax)
+      result += await randomInt(evaluatedMin, evaluatedMax)
     }
     return result
   }
@@ -85,15 +85,15 @@ class DNode extends Evaluable {
     this.op = op
   }
 
-  evaluate(): number {
+  async evaluate() : Promise<number> {
     if (this.op instanceof Evaluable) return this.op.evaluate()
 
     if (!this.left || !this.right) {
       throw new Error(`Operator "${this.op}" is missing operands`)
     }
 
-    const leftValue = this.left.evaluate()
-    const rightValue = this.right.evaluate()
+    const leftValue = await this.left.evaluate()
+    const rightValue = await this.right.evaluate()
 
     switch (this.op) {
       case '+':
@@ -439,7 +439,7 @@ export class Expression extends Evaluable {
     return stack[0]
   }
 
-  evaluate(): number {
+  async evaluate(): Promise<number> {
     if (!this.root) {
       throw new Error('Expression root is empty')
     }

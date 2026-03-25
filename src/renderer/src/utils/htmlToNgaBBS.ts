@@ -12,15 +12,48 @@ export type ImageModuleConfig = {
   attachmentMappings: Record<string, string>
 }
 
+export type EditorModuleConfig = {
+  baseFontSizePx?: number
+}
+
 export type HtmlToNgaBBSOptions = {
   imageConfig?: Partial<ImageModuleConfig>
+  editorConfig?: Partial<EditorModuleConfig>
 }
+
+const DEFAULT_BASE_FONT_SIZE_PX = 16
 
 function normalizePath(input: string): string {
   let path = input.replace(/\\/g, '/')
   path = path.replace(/\/+/g, '/')
   path = path.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
   return path.replace(/^[A-Z]/, (match)=>match.toLowerCase())
+}
+
+function parsePxValue(value: string): number | null {
+  const match = value.trim().match(/^(\d+(?:\.\d+)?)px$/i)
+  if (!match) return null
+  const n = Number(match[1])
+  if (!Number.isFinite(n) || n <= 0) return null
+  return n
+}
+
+function resolveBaseFontSizePx(options?: HtmlToNgaBBSOptions): number {
+  const raw = options?.editorConfig?.baseFontSizePx
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_BASE_FONT_SIZE_PX
+  return n
+}
+
+function toNgaFontSizeTag(value: string, options?: HtmlToNgaBBSOptions): string {
+  const px = parsePxValue(value)
+  if (!px) {
+    return `size=${value}`
+  }
+
+  const basePx = resolveBaseFontSizePx(options)
+  const percent = Math.max(1, Math.round((px / basePx) * 100))
+  return `size=${percent}%`
 }
 
 function parseAppImagePath(src: string): string | null {
@@ -63,7 +96,7 @@ function resolveImageSource(src: string, options?: HtmlToNgaBBSOptions): string 
   return trimmed || src
 }
 
-function applyInlineStyle(el: HTMLElement, content: string): string {
+function applyInlineStyle(el: HTMLElement, content: string, options?: HtmlToNgaBBSOptions): string {
   let out = content
   const style = el.style
 
@@ -77,7 +110,7 @@ function applyInlineStyle(el: HTMLElement, content: string): string {
   }
 
   if (style.fontSize) {
-    out = wrap(`size=${style.fontSize}`, out)
+    out = wrap(toNgaFontSizeTag(style.fontSize, options), out)
   }
 
   return out
@@ -220,7 +253,7 @@ function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
     }
     case 'span': {
       const inner = serializeChildren(el, options)
-      return applyInlineStyle(el, inner)
+      return applyInlineStyle(el, inner, options)
     }
     default:
       return serializeChildren(el, options)

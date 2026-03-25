@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { FileService, type OpenFileOptions } from '../../utils/fileService'
+import type { OpenFileOptions } from '../../utils/fileService'
 
 type ImageAttachmentMappingItem = {
   imagePath: string
@@ -51,7 +51,7 @@ async function loadConfig(): Promise<void> {
   errorMessage.value = ''
   try {
     const result = await window.api.imagesGetAttachmentMappings()
-    rootPath.value = result.rootPath ? await FileService.normalizePath(result.rootPath) : null
+    rootPath.value = result.rootPath ? await window.api.normalizePath(result.rootPath) : null
     mappings.value = result.items.map((item) => ({
       imagePath: item.imagePath,
       attachmentUrl: item.attachmentUrl
@@ -96,7 +96,7 @@ async function chooseRootDirectory() {
   if (!selectedPath) return
 
   try {
-    const normalized = await FileService.normalizePath(selectedPath)
+    const normalized = await window.api.normalizePath(selectedPath)
     if (normalized !== rootPath.value) {
       rootPath.value = normalized
       markDirty()

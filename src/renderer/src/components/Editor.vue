@@ -12,7 +12,7 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import { FileService, OpenFileOptions, OpenFileDetails, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
+import type { OpenFileOptions, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
 import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
@@ -131,6 +131,10 @@ type ImageExportConfig = {
   attachmentMappings: Record<string, string>
 }
 
+type EditorExportConfig = {
+  baseFontSizePx?: number
+}
+
 type SaveTrigger = 'manual' | 'autosave' | 'switch'
 
 const hasRelatedPath = computed(() => relatedPath.value.trim().length > 0)
@@ -158,6 +162,15 @@ function normalizeImageExportConfig(raw: unknown): ImageExportConfig | undefined
   }
 
   return { rootPath, attachmentMappings }
+}
+
+function normalizeEditorExportConfig(raw: unknown): EditorExportConfig | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined
+  const obj = raw as Record<string, unknown>
+  const baseRaw = obj.baseFontSizePx
+  const n = typeof baseRaw === 'number' ? baseRaw : Number(baseRaw)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return { baseFontSizePx: Math.round(n) }
 }
 
 function setSaveStatus(message: string, extra?: Record<string, unknown>): void {
@@ -243,18 +256,18 @@ async function saveEditorContent(trigger: SaveTrigger, forceChoosePath = false):
 async function handleBeforeFileSwitch(): Promise<boolean> {
   if (!isDirty.value) return true
 
+  const shouldSave = window.confirm('Current document has unsaved changes. Save before opening another file?')
+  if (!shouldSave) {
+    setSaveStatus('Switched without saving previous content')
+    return true
+  }
+
   if (hasRelatedPath.value) {
     const saved = await saveEditorContent('switch')
     if (!saved) {
       setSaveStatus('Switch canceled: save failed')
       return false
     }
-    return true
-  }
-
-  const shouldSave = window.confirm('Current document has unsaved changes. Save before opening another file?')
-  if (!shouldSave) {
-    setSaveStatus('Switched without saving previous content')
     return true
   }
 
@@ -282,15 +295,9 @@ function startAutoSaveLoop(): void {
 //#endregion
 
 //#region 'Ipc Callbacks'
-const handleEditorSave = async (details?: SaveFileDetails) => {
-  if (!editor.value) return
-  if (details?.broadcastInfo !== 'menu-savefile') return
-  await saveEditorContent('manual')
-}
 
-const handleEditorSaveAs = async (details?: SaveFileDetails) => {
+const handleEditorSaveAs = async () => {
   if (!editor.value) return
-  if (details?.broadcastInfo !== 'menu-saveas-bbs') return
 
   const options: SaveFileOptions = {
     broadcastInfo: 'menu-savefileas',
@@ -315,7 +322,15 @@ const handleEditorSaveAs = async (details?: SaveFileDetails) => {
     console.warn('[Editor] failed to read image config, fallback to original image src', error)
   }
 
-  const bbs = htmlToNgaBBS(html, { imageConfig })
+  let editorConfig: EditorExportConfig | undefined
+  try {
+    const rawConfig = await window.api.getConfig('editor')
+    editorConfig = normalizeEditorExportConfig(rawConfig)
+  } catch (error) {
+    console.warn('[Editor] failed to read editor config, fallback to default base font size', error)
+  }
+
+  const bbs = htmlToNgaBBS(html, { imageConfig, editorConfig })
   const saveDetails = await window.api.saveFileSignal(bbs, options) as SaveFileDetails
   if (saveDetails?.isDialogCanceled) {
     setSaveStatus('Save as BBS canceled')
@@ -325,50 +340,54 @@ const handleEditorSaveAs = async (details?: SaveFileDetails) => {
 }
 
 function IpcCallbackRegister() {
-  FileService.OpenFileListeners.set('editor-opencontent', async (filePath: string | string[], content?: string | string[], details?: OpenFileDetails) => {
-    if (!editor.value) return
-    if (details?.broadcastInfo !== 'menu-openfile' || details?.isDialogCanceled) return
-    if (!content) return
-
-    const proceed = await handleBeforeFileSwitch()
-    if (!proceed) return
-
-    const targetPath = typeof filePath === 'string' ? filePath : filePath[0]
-    const ext = targetPath?.split('.').pop()?.toLowerCase()
-
-    suppressDirtyTracking.value = true
-    try {
-      if (ext === 'json') {
-        try {
-          const json = JSON.parse(content as string)
-          editor.value.commands.setContent(json)
-        } catch (e) {
-          console.error('Failed to parse JSON:', e)
-          setSaveStatus('Open failed: invalid JSON')
-          return
-        }
-      } else {
-        editor.value.commands.setContent(content as string)
-      }
-
-      relatedPath.value = targetPath ?? ''
-      isDirty.value = false
-      setSaveStatus('File opened', { path: relatedPath.value })
-    } finally {
-      suppressDirtyTracking.value = false
+  //menu-save
+  window.api.on((ch, ..._args) => {
+    if (ch && ch === 'menu-save') {
+      if (!editor.value) return
+      saveEditorContent('manual')
     }
   })
-
-  FileService.OpenFileListeners.set('editor-openimage', (filePath: string | string[], _content, details?: OpenFileDetails) => {
-    if (!editor.value) return
-    if (details?.broadcastInfo !== 'editor-insertimage' || details?.isDialogCanceled) return
-
-    const imagePath = `app://${filePath}`
-    editor.value.chain().focus().setImage({ src: imagePath }).run()
+  //menu-saveas
+  window.api.on((ch, ..._args) => {
+    if (ch && ch === 'menu-saveas') handleEditorSaveAs()
   })
-  // saving signal from main process
-  FileService.SaveFileListeners.set('editor-savecontent', handleEditorSave)
-  FileService.SaveFileListeners.set('editor-saveas', handleEditorSaveAs)
+  //menu-open
+  window.api.on(async (ch, _event, args) => {
+    if (ch && ch === 'menu-open') {
+      if (!editor.value) return
+      const filePath = args[0] as string
+      const content = args[1] as string
+      if (!content) return
+
+      const proceed = await handleBeforeFileSwitch()
+      if (!proceed) return
+
+      const targetPath = typeof filePath === 'string' ? filePath : filePath[0]
+      const ext = targetPath?.split('.').pop()?.toLowerCase()
+
+      suppressDirtyTracking.value = true
+      try {
+        if (ext === 'json') {
+          try {
+            const json = JSON.parse(content as string)
+            editor.value.commands.setContent(json)
+          } catch (e) {
+            console.error('Failed to parse JSON:', e)
+            setSaveStatus('Open failed: invalid JSON')
+            return
+          }
+        } else {
+          editor.value.commands.setContent(content as string)
+        }
+
+        relatedPath.value = targetPath ?? ''
+        isDirty.value = false
+        setSaveStatus('File opened', { path: relatedPath.value })
+      } finally {
+        suppressDirtyTracking.value = false
+      }
+    }
+  })
 }
 //#endregion
 
@@ -453,7 +472,7 @@ const insertTable = () => {
 const insertDetails = () => {
   editor.value?.chain().focus().setDetails().run()
 }
-const insertImage = () => {
+const insertImage = async () => {
   // 调用主进程打开图片对话框
   const options: OpenFileOptions = {
     behavior: 'path',
@@ -465,7 +484,13 @@ const insertImage = () => {
       message: '编辑器插入图片'
     }
   }
-  window.api.openFileSignal(options)
+  const result = await window.api.openFileSignal(options)
+  const filePath = result[0]
+  if (!editor.value) return
+
+  const imagePath = `app://${filePath}`
+  editor.value.chain().focus().setImage({ src: imagePath }).run()
+
 }
 
 watch(editor, (newInstance) => {

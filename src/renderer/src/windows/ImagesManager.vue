@@ -24,7 +24,6 @@ const items = ref<ImageItem[]>([])
 const selectedPaths = ref<string[]>([])
 const dropTargetPath = ref<string | null>(null)
 const dragTargetPaths = ref<string[] | null>(null)
-const dragEnterDepthMap = new Map<string, number>()
 const renamingPath = ref<string | null>(null)
 const renamingName = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
@@ -335,8 +334,6 @@ function onItemDragEnter(event: DragEvent, item: ImageItem): void {
   event.preventDefault()
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
 
-  const nextDepth = (dragEnterDepthMap.get(item.path) || 0) + 1
-  dragEnterDepthMap.set(item.path, nextDepth)
   dropTargetPath.value = item.path
 }
 function onItemDragOver(event: DragEvent, item: ImageItem): void {
@@ -349,23 +346,11 @@ function onItemDragLeave(event: DragEvent, item: ImageItem): void {
   const dropDir = getDropTargetDir(item)
   if (!dropDir) return
   event.preventDefault()
-
-  const nextDepth = (dragEnterDepthMap.get(item.path) || 1) - 1
-  if (nextDepth <= 0) {
-    dragEnterDepthMap.delete(item.path)
-    if (dropTargetPath.value === item.path) {
-      dropTargetPath.value = null
-    }
-    return
-  }
-
-  dragEnterDepthMap.set(item.path, nextDepth)
 }
 async function onItemDrop(event: DragEvent, item: ImageItem): Promise<void> {
   const dropDir = getDropTargetDir(item)
   if (!dropDir || dragTargetPaths.value?.includes(dropDir)) return
   event.preventDefault()
-  dragEnterDepthMap.delete(item.path)
   dropTargetPath.value = null
   await handleDrop(event, dropDir)
 }
@@ -377,7 +362,6 @@ function onWorkspaceDragOver(event: DragEvent): void {
 async function onWorkspaceDrop(event: DragEvent): Promise<void> {
   if (!isExternalFileDrag(event.dataTransfer)) return
   event.preventDefault()
-  dragEnterDepthMap.clear()
   dropTargetPath.value = null
   await handleDrop(event, currentPath.value)
 }

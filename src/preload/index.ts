@@ -1,4 +1,4 @@
-﻿import { IpcMainServiceWorker, contextBridge, ipcRenderer, webUtils } from 'electron'
+﻿import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
 type ImageItem = {
@@ -45,6 +45,10 @@ const api = {
    * 获得父路径，当参数是根目录时(D:/或D:)返回NULL
    */
   parentPath: (path : string) : Promise<string | null> => ipcRenderer.invoke('sys:parentpath', path),
+  /**
+   * [0,1)随机数生成，可重新配置
+   */
+  rand: (pseudo?:boolean, seed?: string | number)=>ipcRenderer.invoke('sys:rand', pseudo, seed),
 
   //core:config
   /**
@@ -87,7 +91,10 @@ const api = {
   imagesImportDialog: (targetDirectory: string): Promise<string[]> =>
     ipcRenderer.invoke('images:import-dialog', targetDirectory),
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]): Promise<string[]> =>
-    ipcRenderer.invoke('images:import-files', targetDirectory, sourceFilePaths)
+    ipcRenderer.invoke('images:import-files', targetDirectory, sourceFilePaths),
+
+  //TODO
+  on: (callback: (ch: string, ...args) => void) => ipcRenderer.on('BUS_CHANNEL', (event, ch, ...args)=>callback(ch, event, args))
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

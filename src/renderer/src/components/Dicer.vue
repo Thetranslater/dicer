@@ -42,7 +42,7 @@ function handleBlur() {
 }
 
 // 投掷骰子
-function rollDice() {
+async function rollDice() {
   const editor = getEditor()
   if (!editor) return
 
@@ -61,14 +61,14 @@ function rollDice() {
   let result: number
   try {
     const expr = new Expression(diceExpression)
-    result = expr.evaluate()
+    result = await expr.evaluate()
   } catch (e) {
     // 如果解析失败，使用默认值 0
     result = 0
   }
 
   // 插入带有实际结果的文本到编辑器
-  const text = `${expression}=${result}`
+  const text = `${diceExpression}=${result}`
   editor.chain().focus().insertContent(text).run()
 }
 </script>

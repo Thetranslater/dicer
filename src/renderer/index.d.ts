@@ -29,6 +29,7 @@ export interface IAPI {
   delete: (path: string | string[], options? : any) => void
   normalizePath: (path : string) => Promise<string>
   parentPath: (path : string) => Promise<string | null>
+  rand: (pseudo? : boolean, seed? : string | number) => number
 
   getConfig: (moduleName: string) => Promise<any>
   loadProjectConfig: (configJson: Record<string, any>) => Promise<ProjectConfig>
@@ -51,6 +52,25 @@ export interface IAPI {
   imagesMove: (sourcePath: string, targetDirectory: string) => Promise<string>
   imagesImportDialog: (targetDirectory: string) => Promise<string[]>
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]) => Promise<string[]>
+
+  //
+  fs: {
+    open: (options?)=>any
+    save: (content, options?)=>any
+    mkdir: (path, options?)=>any
+    rm: (path, options?)=>any
+    mv: (source, target, options?)=>any
+  }
+  path: {
+    normalize: (path)=>any
+    parent: (path)=>any
+  }
+  config: {
+    get: (module)=>any
+    set: (module, newconfig)=>any
+
+  }
+  on: (callback: (ch, ...args)=>void)=>void
 }
 
 declare global {

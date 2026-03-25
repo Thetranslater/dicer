@@ -1,5 +1,5 @@
 ﻿import { dialog, ipcMain } from 'electron'
-import { copyFile, mkdir, readdir, rename, rm, stat } from 'fs/promises'
+import { copyFile, mkdir, readdir, rename, stat } from 'fs/promises'
 import { existsSync } from 'fs'
 import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path'
 

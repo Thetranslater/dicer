@@ -6,9 +6,30 @@ type ProjectModuleConfig = {
   name?: string
 }
 
+type EditorModuleConfig = {
+  baseFontSizePx?: number
+  [key: string]: unknown
+}
+
+const fontSizes = [
+  { label: '12px', value: '12px' },
+  { label: '14px', value: '14px' },
+  { label: '16px', value: '16px' },
+  { label: '18px', value: '18px' },
+  { label: '20px', value: '20px' },
+  { label: '24px', value: '24px' },
+  { label: '28px', value: '28px' },
+  { label: '32px', value: '32px' },
+  { label: '36px', value: '36px' },
+  { label: '48px', value: '48px' }
+]
+
 const projectConfig = ref<ProjectModuleConfig | null>(null)
+const baseFontSize = ref('16px')
 const loading = ref(false)
+const saving = ref(false)
 const errorMessage = ref('')
+const infoMessage = ref('')
 
 function normalizePath(path?: string): string {
   if (!path) return ''
@@ -20,16 +41,61 @@ function toErrorMessage(error: unknown): string {
   return String(error)
 }
 
+function parsePx(value: string): number {
+  const match = value.match(/^(\d+(?:\.\d+)?)px$/i)
+  if (!match) return 16
+  const n = Number(match[1])
+  if (!Number.isFinite(n) || n <= 0) return 16
+  return Math.round(n)
+}
+
+function normalizeBaseFontSizeValue(value: unknown): string {
+  const n = typeof value === 'number' ? value : Number(value)
+  const px = Number.isFinite(n) && n > 0 ? Math.round(n) : 16
+  const candidate = `${px}px`
+  return fontSizes.some((item) => item.value === candidate) ? candidate : '16px'
+}
+
+function toEditorModuleConfig(value: unknown): EditorModuleConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
+  return { ...(value as EditorModuleConfig) }
+}
+
 async function loadProjectConfig(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
+  infoMessage.value = ''
   try {
-    const config = await window.api.getConfig('project')
-    projectConfig.value = (config ?? null) as ProjectModuleConfig | null
+    const [project, editor] = await Promise.all([
+      window.api.getConfig('project'),
+      window.api.getConfig('editor')
+    ])
+
+    projectConfig.value = (project ?? null) as ProjectModuleConfig | null
+    const editorConfig = toEditorModuleConfig(editor)
+    baseFontSize.value = normalizeBaseFontSizeValue(editorConfig.baseFontSizePx)
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
     loading.value = false
+  }
+}
+
+async function saveBaseFontSize(): Promise<void> {
+  saving.value = true
+  errorMessage.value = ''
+  infoMessage.value = ''
+  try {
+    const current = await window.api.getConfig('editor')
+    const editorConfig = toEditorModuleConfig(current)
+    editorConfig.baseFontSizePx = parsePx(baseFontSize.value)
+
+    await window.api.setConfig('editor', editorConfig)
+    infoMessage.value = `Default base font size saved: ${editorConfig.baseFontSizePx}px`
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    saving.value = false
   }
 }
 
@@ -44,10 +110,11 @@ onMounted(() => {
     <p class="hint">The project path is immutable after the project is created.</p>
 
     <div class="action-row">
-      <button @click="loadProjectConfig" :disabled="loading">Reload</button>
+      <button @click="loadProjectConfig" :disabled="loading || saving">Reload</button>
     </div>
 
     <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>
+    <p v-else-if="infoMessage" class="info-text">{{ infoMessage }}</p>
 
     <div v-if="!projectConfig" class="placeholder">
       No project is loaded.
@@ -59,6 +126,16 @@ onMounted(() => {
 
       <div class="label">Project Path</div>
       <div class="value">{{ normalizePath(projectConfig.root) }}</div>
+    </div>
+
+    <div class="setting-row">
+      <label class="label" for="base-font-size">Default Base Font Size</label>
+      <select id="base-font-size" v-model="baseFontSize" :disabled="loading || saving">
+        <option v-for="size in fontSizes" :key="size.value" :value="size.value">
+          {{ size.label }}
+        </option>
+      </select>
+      <button @click="saveBaseFontSize" :disabled="loading || saving">Save</button>
     </div>
   </section>
 </template>
@@ -78,7 +155,8 @@ onMounted(() => {
   font-size: 13px;
 }
 
-.action-row button {
+.action-row button,
+.setting-row button {
   height: 32px;
   border: 1px solid #d0d7de;
   border-radius: 6px;
@@ -87,9 +165,27 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.action-row button:disabled {
+.action-row button:disabled,
+.setting-row button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.setting-row {
+  display: grid;
+  grid-template-columns: 160px 120px auto;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.setting-row select {
+  height: 32px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0 8px;
+  font-size: 13px;
+  background: #fff;
 }
 
 .placeholder {
@@ -100,6 +196,12 @@ onMounted(() => {
 .error-text {
   margin: 0;
   color: #cf222e;
+  font-size: 13px;
+}
+
+.info-text {
+  margin: 0;
+  color: #0969da;
   font-size: 13px;
 }
 

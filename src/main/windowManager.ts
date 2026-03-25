@@ -172,7 +172,7 @@ class WindowManager {
     }
   
     const window = windowManager._createWindow(module, windowOptions)
-    if (module === 'launcher' && process.platform !== 'darwin') {
+    if (module !== 'editor' && process.platform !== 'darwin') {
       window.removeMenu()
       window.setMenuBarVisibility(false)
       window.setAutoHideMenuBar(true)

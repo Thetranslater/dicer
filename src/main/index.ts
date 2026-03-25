@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, BrowserWindow, ipcMain, protocol} from 'electron'
 import {updateElectronApp} from 'update-electron-app'
 import { electronApp, optimizer} from '@electron-toolkit/utils'
 // import { net } from 'electron'
@@ -9,6 +9,8 @@ import { openFile, registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 import { OpenFileOptions } from '../renderer/src/utils/fileService'
 import { registerConfigIpcHandlers } from './configManager'
+
+
 
 // 注册本地文件协议
 function registerLocalProtocol(): void {
@@ -63,12 +65,11 @@ updateElectronApp()
 //   const request = net.request({
 //     method: 'POST',
 //     protocol: 'https:',
-//     url: url.toString(),
+//     url: 'https://bbs.nga.cn/index.php?lite=js',
 //     headers: {
-//       'Cookie': 'Hm_lvt_6933ef97905336bef84f9609785bcc3d=1773319391; HMACCOUNT=7A2D040D741BF72F; ngacn0comUserInfo=UIDIAIPI%09UIDIAIPI%0939%0939%09%0910%090%094%090%090%09192_20%2C130_10; ngaPassportUid=61903141; ngaPassportUrlencodedUname=UIDIAIPI; ngaPassportCid=X8uiqit3hkql9fnnmd7l461vjnvhpb65s1gomg7u; HM_tbj=p9whnc%7C1kw.w0; lastpath=/thread.php?fid=-447601; ngacn0comUserInfoCheck=32a870d6e40ec6ffc4da228231236067; ngacn0comInfoCheckTime=1773323427; bbsmisccookies=%7B%22pv_count_for_insad%22%3A%7B0%3A-24%2C1%3A1773334830%7D%2C%22insad_views%22%3A%7B0%3A1%2C1%3A1773334830%7D%2C%22uisetting%22%3A%7B0%3A1%2C1%3A1773925337%7D%7D; Hm_lpvt_6933ef97905336bef84f9609785bcc3d=1773323480; lastvisit=1773323492',
+//       'Cookie': 'Hm_lvt_01c4614f24e14020e036f4c3597aa059=1774409549; HMACCOUNT=3866E0CF232BF660; __ad_cookie_mapping_tck_731=0527c107441bef0cc49db488585794dc; ngacn0comUserInfo=UIDIAIPI%09UIDIAIPI%0939%0939%09%0910%090%094%090%090%09192_20%2C130_10; ngaPassportUid=61903141; ngaPassportUrlencodedUname=UIDIAIPI; ngaPassportCid=X8uiqit3hkql9fnnmd7l461vjnvhpb65s1gomg7u; ngacn0comUserInfoCheck=c23f1e8669136a6c99d0649e751f6f7c; ngacn0comInfoCheckTime=1774411622; lastpath=/; lastvisit=1774423241; bbsmisccookies=%7B%22pv_count_for_insad%22%3A%7B0%3A-22%2C1%3A1774458088%7D%2C%22insad_views%22%3A%7B0%3A1%2C1%3A1774458088%7D%2C%22uisetting%22%3A%7B0%3A%22d%22%2C1%3A1774423541%7D%7D; Hm_lpvt_01c4614f24e14020e036f4c3597aa059=1774423242',
 //       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36 Edg/145.0.0.0',
-//       //'Referer': 'https://ngabbs.com/post.php?action=new&fid=-447601',
-//       'Origin': 'https://ngabbs.com',
+//       'Referer': 'https://nga.cn/',
 //       'Accept': '*/*',
 //       'Accept-Language': 'zh-CN,zh;q=0.9',
 //       'Connection': 'keep-alive',
@@ -145,7 +146,7 @@ app.whenReady().then(() => {
                 if (!result[2].isDialogCanceled){
                   const filePath = result[0]
                   const content = result[1]
-                  windowManager.get('editor')?.webContents.send('sys:openfilec', filePath, content, result[2])
+                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', filePath, content)
                 }
               }
               catch (error){
@@ -157,30 +158,12 @@ app.whenReady().then(() => {
         {
           label: '保存',
           accelerator: 'CmdOrCtrl+S',
-          click: () => {
-            const details = {
-              broadcastInfo: 'menu-savefile',
-              dev:{
-                source:'menu-save-click',
-                message:'由菜单触发的保存'
-              }
-            }
-            windowManager.get('editor')?.webContents.send('sys:savefilec', details)
-          }
+          click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-save')
         },
         {
           label: '另存为..',
           accelerator: 'CmdOrCtrl+Shift+S',
-          click: () => {
-            const details = {
-              broadcastInfo: 'menu-saveas-bbs',
-              dev: {
-                source: 'menu-saveas-click',
-                message: 'Save as NGA BBS'
-              }
-            }
-            windowManager.get('editor')?.webContents.send('sys:savefilec', details)
-          }
+          click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-saveas')
         },
         { type: 'separator' },
         { role: 'quit' }

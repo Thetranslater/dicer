@@ -6,7 +6,40 @@ import assert from 'assert'
 import type { OpenFileOptions, OpenFileDetails, FSNode, SaveFileOptions, SaveFileDetails } from '../renderer/src/utils/fileService'
 import { configManager } from './configManager'
 import { broadcast, windowManager } from './windowManager'
-import { defaultServerMainFields } from 'vite'
+
+import { rdSeed32, normalizeUint32 } from 'rdrand-lite'
+import { Random } from 'random'
+
+class RandomGenerator{
+  static RNG? : RandomGenerator = undefined
+
+  private _generator? : Random
+  private _seed? : string | number
+  private _is_pseudo : boolean
+  constructor(pseudo? : boolean, seed?: string | number){
+    this._is_pseudo = pseudo ?? true
+    if(this._is_pseudo){
+      this._seed = seed ?? rdSeed32()
+      this._generator = new Random(this._seed)
+    }
+  }
+  gen(pseudo? : boolean){
+    if(pseudo) return normalizeUint32(rdSeed32())
+    if(this._is_pseudo){
+      return this._generator!.float()
+    }
+    return normalizeUint32(rdSeed32())
+  }
+  setseed(seed : string | number){
+    this._is_pseudo = true
+    this._seed = seed
+    this._generator = new Random(seed)
+  }
+  seed() : string| number | undefined{
+    if(this._is_pseudo) return this._seed
+    return undefined
+  }
+}
 
 function buildDirectoryNode(directoryPath: string): FSNode {
   const children: FSNode[] = []
@@ -199,6 +232,14 @@ export function registerCoreIpcHandlers(): void {
     const deleted = configManager.delete(moduleName)
     broadcast('sys:onconfig', configManager.getAll())
     return deleted
+  })
+
+  ipcMain.handle('sys:rand', (_e, pseudo?: boolean, seed?: string)=>{
+    if(pseudo || seed) {
+      RandomGenerator.RNG = new RandomGenerator(pseudo, seed)
+    }
+    if(!RandomGenerator.RNG) RandomGenerator.RNG = new RandomGenerator()
+    return RandomGenerator.RNG.gen()
   })
 
   ipcMain.handle('project:is-loaded', () => {
