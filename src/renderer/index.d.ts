@@ -1,4 +1,5 @@
 ﻿import { ElectronAPI } from '@electron-toolkit/preload'
+import { FSNode } from '@renderer/utils/fileService'
 
 type ImageItem = {
   name: string
@@ -24,9 +25,6 @@ export interface IAPI {
   //signal:renderer process to main, channel: main to renderer process
   saveFileChannel: (callback: (details?) => void) => void
   saveFileSignal: (content: string | Buffer, options?) => Promise<any>
-  openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => void
-  openFileSignal: (options?) => Promise<[string | string[], any, any]>
-  delete: (path: string | string[], options? : any) => void
   normalizePath: (path : string) => Promise<string>
   parentPath: (path : string) => Promise<string | null>
   rand: (pseudo? : boolean, seed? : string | number) => number
@@ -46,19 +44,17 @@ export interface IAPI {
   imagesSelectRoot: () => Promise<string | null>
   imagesGetAttachmentMappings: () => Promise<ImageAttachmentMappingsResult>
   imagesSaveAttachmentMappings: (mappings: Record<string, string>) => Promise<{ savedCount: number }>
-  imagesListDir: (directoryPath: string) => Promise<ImageItem[]>
   imagesCreateFolder: (parentPath: string, folderName?: string) => Promise<string>
   imagesRename: (targetPath: string, nextName: string) => Promise<string>
-  imagesMove: (sourcePath: string, targetDirectory: string) => Promise<string>
   imagesImportDialog: (targetDirectory: string) => Promise<string[]>
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]) => Promise<string[]>
 
   //new modularized API
   fs: {
-    open: (option?)=>any
-    save: (content, option?)=>any
+    open: (option?)=>Promise<FSNode[]>
+    save: (content, option?)=>Promise<string[]>
     mkdir: (path, option?)=>any
-    rm: (path, option?)=>any
+    rm: (paths: string[], option?)=>any
     mv: (source, target, option?)=>any
   }
   path: {
@@ -68,7 +64,6 @@ export interface IAPI {
   config: {
     get: (module)=>any
     set: (module, newconfig)=>any
-
   }
   on: (callback: (ch, ...args)=>void)=>void
 }

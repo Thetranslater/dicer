@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { type OpenFileOptions } from '../utils/fileService'
+import type { FSNode, OpenOption } from '../utils/fileService'
 import type { ImageModuleConfig } from '../components/settings/ImagesManagerSettings.vue'
 
 const IMAGESMANAGER_MODULE_NAME = 'image'
@@ -34,19 +34,58 @@ const statusMessage = ref('')
 //#endregion
 
 //#region 'basic function'
+const IMAGE_EXTENSIONS = new Set([
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.tif', '.tiff', '.ico'
+])
+
 function isPathSelected(path: string): boolean {
   return selectedPaths.value.includes(path)
 }
 function toImageSrc(path: string): string {
   return `app://${encodeURI(path)}`
 }
+
+function isImageFileName(name: string): boolean {
+  const idx = name.lastIndexOf('.')
+  if (idx < 0) return false
+  return IMAGE_EXTENSIONS.has(name.slice(idx).toLowerCase())
+}
+
+function toImageItemsFromFsNodes(fsnodes: FSNode[]): ImageItem[] {
+  const targetDir = fsnodes[0]
+
+  const children = Array.isArray(targetDir?.children) ? targetDir.children : []
+
+  return children
+    .filter((node) => {
+      if (!node || !node.path || !node.name) return false
+      if (node.isDir) return true
+      return isImageFileName(node.name)
+    })
+    .map((node) => ({
+      name: node.name,
+      path: node.path,
+      isDirectory: node.isDir
+    }))
+}
+
 async function loadDirectory(path: string): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const result = await window.api.imagesListDir(path)
-    currentPath.value = await window.api.normalizePath(path)
-    items.value = result
+    const normalizedPath = await window.api.normalizePath(path)
+    const option: OpenOption = {
+      fileOption: {
+        isLoad: false,
+      },
+      dirOption: {
+        path: [normalizedPath],
+        isRecursive: false
+      }
+    }
+    const fsnodes = await window.api.fs.open(option)
+    currentPath.value = normalizedPath
+    items.value = toImageItemsFromFsNodes(fsnodes)
     selectedPaths.value = []
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -164,24 +203,20 @@ async function chooseRootDirectory(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   statusMessage.value = ''
-  const options: OpenFileOptions = {
-    behavior: 'path',
+  const option: OpenOption = {
     isMultiselection: false,
-    broadcastInfo: 'imgmanager-chooseroot',
-    dialogProperties: ['openDirectory', 'createDirectory'],
-    dev: {
-      source: 'imagemanager-chooseRootDirectory',
-      message: 'ImgManager选择根目录功能'
+    dialogOpenType: 'dir',
+    fileOption: {
+      isLoad: false
+    },
+    dirOption: {
+      isRecursive: false
     }
   }
 
   try {
-    const [filePath, _content, details] = await window.api.openFileSignal(options)
-
-    if (details?.isDialogCanceled) {
-      statusMessage.value = 'Root selection canceled.'
-      return
-    }
+    const fsnodes = await window.api.fs.open(option)
+    const filePath = fsnodes[0].path
 
     const selectedPath = filePath as string
     if (!selectedPath) {
@@ -210,7 +245,7 @@ async function goToBreadcrumb(path: string): Promise<void> {
   await loadDirectory(path)
 }
 async function refresh(): Promise<void> {
-  if (!hasRoot.value) return
+  if (!currentPath.value) return
   await loadDirectory(currentPath.value)
 }
 async function goUp(): Promise<void> {
@@ -243,8 +278,13 @@ async function createFolder(): Promise<void> {
 //#endregion
 
 //#region 'drag-drop'
-function isSamePath(a: string, b: string): boolean {
-  return window.api.normalizePath(a) === window.api.normalizePath(b)
+
+function joinPath(base: string, name: string): string {
+  return `${base.replace(/[\\/]+$/, '')}/${name}`.replace(/\\/g, '/')
+}
+
+function buildMoveTargetPath(sourcePath: string, targetDirectoryPath: string): string {
+  return joinPath(targetDirectoryPath, displayNameForPath(sourcePath))
 }
 function getInternalDragSources(dataTransfer: DataTransfer | null | undefined): string[] {
   if (!dataTransfer) return []
@@ -273,8 +313,8 @@ function isExternalFileDrag(dataTransfer: DataTransfer | null | undefined): bool
   const types = Array.from(dataTransfer.types ?? [])
   return types.includes('Files') && !hasInternalDragData(dataTransfer)
 }
-async function handleDrop(event: DragEvent, targetDir: string): Promise<void> {
-  if (!targetDir) return
+async function handleDrop(event: DragEvent, targetDirectoryPath: string): Promise<void> {
+  if (!targetDirectoryPath) return
 
   const internalSources = getInternalDragSources(event.dataTransfer)
   const files = Array.from(event.dataTransfer?.files ?? []) as Array<File>
@@ -284,25 +324,25 @@ async function handleDrop(event: DragEvent, targetDir: string): Promise<void> {
   errorMessage.value = ''
   try {
     if (internalSources.length > 0) {
-      const moveSources = internalSources.filter((source) => !isSamePath(source, targetDir))
-      if (moveSources.length === 0) return
+      const moveTargets = internalSources
+        .map((source) => ({
+          source,
+          targetPath: buildMoveTargetPath(source, targetDirectoryPath)
+        }))
+        .filter(({ source, targetPath }) => source !== targetPath)
 
-      const results = await Promise.allSettled(
-        moveSources.map((source) => window.api.imagesMove(source, targetDir))
+      if (moveTargets.length === 0) return
+
+      await Promise.allSettled(
+        moveTargets.map(({ source, targetPath }) => window.api.fs.mv(source, targetPath))
       )
-      const successCount = results.filter((r) => r.status === 'fulfilled').length
-      const failCount = results.length - successCount
 
-      statusMessage.value = failCount === 0
-        ? `Moved ${successCount} item(s).`
-        : `Moved ${successCount} item(s), failed ${failCount} item(s).`
-
-      await loadDirectory(currentPath.value)
+      refresh()
       return
     } else if (externalSources.length > 0) {
-      const imported = await window.api.imagesImportFiles(targetDir, externalSources)
+      const imported = await window.api.imagesImportFiles(targetDirectoryPath, externalSources)
       statusMessage.value = imported.length > 0 ? `Imported ${imported.length} file(s)` : 'No image files imported'
-      await loadDirectory(currentPath.value)
+      refresh()
     }
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -494,7 +534,7 @@ async function deleteSelected(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    await window.api.delete(targets)
+    await window.api.fs.rm(targets)
 
     selectedPaths.value = []
     refresh()

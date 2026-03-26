@@ -1,9 +1,8 @@
 ﻿import { dialog, ipcMain } from 'electron'
 import { readFileSync, statSync, readdirSync, writeFileSync, existsSync, mkdirSync, rmSync, renameSync, cpSync} from 'fs'
 import { basename, extname, join, dirname, normalize } from 'path'
-import assert from 'assert'
 
-import type { OpenFileOptions, OpenFileDetails, FSNode, SaveFileOptions, SaveFileDetails, OpenOption, SaveOption } from '../renderer/src/utils/fileService'
+import type { FSNode, SaveFileOptions, SaveFileDetails, OpenOption, SaveOption } from '../renderer/src/utils/fileService'
 import { configManager } from './configManager'
 import { broadcast, windowManager } from './windowManager'
 
@@ -42,38 +41,6 @@ class RandomGenerator{
 }
 
 const TEXT_FILE_EXT = ['.txt', '.md', '.html', '.htm', '.json']
-
-function buildDirectoryNode(directoryPath: string): FSNode {
-  const normalizedDir = normalizePath(directoryPath)
-  const children: FSNode[] = []
-  const entries = readdirSync(directoryPath)
-
-  for (const entry of entries) {
-    const fullPath = join(directoryPath, entry)
-    const normalizedFullPath = normalizePath(fullPath)
-    const entryStat = statSync(fullPath)
-
-    if (entryStat.isDirectory()) {
-      children.push(buildDirectoryNode(fullPath))
-      continue
-    }
-
-    if (entryStat.isFile()) {
-      children.push({
-        path: normalizedFullPath,
-        name: entry,
-        isDir: false
-      })
-    }
-  }
-
-  return {
-    path: normalizedDir,
-    name: basename(directoryPath),
-    isDir: true,
-    children
-  }
-}
 
 export function normalizePath(path : string) : string {
   return normalize(path).replace(/\\/g, '/')
@@ -248,7 +215,7 @@ export function fsOpen(option?: OpenOption): FSNode[] {
   return result
 }
 
-export function fsSave(content: any[], option?: SaveOption): void {
+export function fsSave(content: any[], option?: SaveOption): string[] {
   const payloads = Array.isArray(content) ? content : [content]
   const targetPaths = option?.path?.map((p) => normalizePath(p)) ?? []
 
@@ -262,19 +229,22 @@ export function fsSave(content: any[], option?: SaveOption): void {
       mkdirSync(dirname(targetPath), { recursive: true })
       writeFileSync(targetPath, toWritableContent(value), { flag: 'w' })
     })
-    return
+    return targetPaths
   }
 
   payloads.forEach((value, idx) => {
     const selected = dialog.showSaveDialogSync({
-      title: payloads.length > 1 ? `Save File (${idx + 1}/${payloads.length})` : 'Save File'
+      title: payloads.length > 1 ? `Save File (${idx + 1}/${payloads.length})` : 'Save File',
+      filters: option?.dialogfilters
     })
-
+    targetPaths.push(selected)
     if (!selected) return
     const normalized = normalizePath(selected)
     mkdirSync(dirname(normalized), { recursive: true })
     writeFileSync(normalized, toWritableContent(value), { flag: 'w' })
   })
+
+  return targetPaths
 }
 
 export function fsMkdir(path: string, _option?: any): void {
@@ -283,16 +253,18 @@ export function fsMkdir(path: string, _option?: any): void {
   mkdirSync(normalized, { recursive: true })
 }
 
-export function fsRm(path: string, _option?: any): void {
-  const normalized = normalizePath(path)
-  if (!normalized) return
-  if (!existsSync(normalized)) return
+export function fsRm(paths: string[], _option?: any): void {
+  const normalizedPaths = Array.isArray(paths) ? paths.map((p) => normalizePath(p)) : []
+  for (const normalized of normalizedPaths) {
+    if (!normalized) continue
+    if (!existsSync(normalized)) continue
 
-  if (isProtectedSystemPath(normalized)) {
-    throw new Error(`Refuse to remove protected system path: ${normalized}`)
+    if (isProtectedSystemPath(normalized)) {
+      throw new Error(`Refuse to remove protected system path: ${normalized}`)
+    }
+
+    rmSync(normalized, { recursive: true, force: false })
   }
-
-  rmSync(normalized, { recursive: true, force: false })
 }
 
 export function fsMv(source: string, target: string, _option?: any): void {
@@ -328,74 +300,6 @@ function normalizeSettingsRoute(route?: string): string {
   const trimmed = route.trim()
   if (!trimmed) return '/project'
   return trimmed.startsWith('/') ? trimmed : `/${trimmed}`
-}
-
-export async function openFile(options?: OpenFileOptions): Promise<[string | string[], string | Buffer | FSNode | null | (string | Buffer | FSNode | null)[], OpenFileDetails]> {
-  let path: string[] = []
-  const content: (string | Buffer | FSNode | null)[] = []
-  const details: OpenFileDetails = {
-    dev: {
-      source: options?.dev?.source ?? 'unknown',
-      message: options?.dev?.message ?? 'no options provided, can not deduce the source; '
-    },
-    broadcastInfo: options?.broadcastInfo
-  }
-
-  if (options === undefined || options.path === undefined) {
-    const selected = await dialog.showOpenDialog({
-      title: 'Select File or Folder',
-      filters: options?.dialogfilters,
-      properties:
-        options?.dialogProperties === undefined
-          ? ['openFile', ...(options?.isMultiselection ? (['multiSelections'] as const) : [])]
-          : options.dialogProperties
-    })
-
-    if (selected.canceled) {
-      details.isDialogCanceled = true
-      if (details.dev) details.dev.message += 'dialog canceled; '
-    }
-
-    path = selected.filePaths ?? []
-  } else {
-    path = options.path
-  }
-  path = path.map((value)=>normalizePath(value))
-  for (const value of path) {
-    if (!existsSync(value)){
-      content.push(null)
-      continue
-    }
-
-    const entryStat = statSync(value)
-    if (entryStat.isFile()) {
-      if (options?.behavior === 'path') {
-        content.push(null)
-      } else {
-        let encoding: BufferEncoding | undefined
-        const extension = extname(value)
-        if (TEXT_FILE_EXT.includes(extension)) {
-          encoding = 'utf-8'
-        }
-        const fileContent = readFileSync(value, encoding)
-        content.push(fileContent)
-      }
-      continue
-    }
-    if (entryStat.isDirectory()) {
-      if (options?.behavior === 'content') {
-        content.push(buildDirectoryNode(value))
-      } else {
-        content.push(null)
-      }
-    }
-  }
-
-  assert.ok(path.length === content.length, 'path length does not match content length')
-
-  const rpath = path.length === 1 ? path[0] : path
-  const rcontent = content.length === 1 ? content[0] : content
-  return [rpath, rcontent, details]
 }
 export async function saveFile(content: string | Buffer, options?: SaveFileOptions): Promise<SaveFileDetails> {
   const details: SaveFileDetails = {
@@ -444,31 +348,15 @@ export async function saveFile(content: string | Buffer, options?: SaveFileOptio
   details.isDialogCanceled = selected.canceled
   return details
 }
-export function deleteFileOrDir(path : string | string[], _options? : any){
-  const paths : string[] = typeof path === 'string' ? [path] : path
-  paths.forEach((path) => {
-    if(path.length > 0 ){
-      const normalize_path = normalizePath(path)
-      if(existsSync(normalize_path)){
-        rmSync(normalize_path, { recursive: true, force: false})
-      }
-    }
-  })
-}
 export function registerCoreIpcHandlers(): void {
   ipcMain.handle('fs:open', (_e, option?: OpenOption) => fsOpen(option))
   ipcMain.handle('fs:save', (_e, content: any[], option?: SaveOption) => fsSave(content, option))
   ipcMain.handle('fs:mkdir', (_e, path: string, option?: any) => fsMkdir(path, option))
-  ipcMain.handle('fs:rm', (_e, path: string, option?: any) => fsRm(path, option))
+  ipcMain.handle('fs:rm', (_e, paths: string[], option?: any) => fsRm(paths, option))
   ipcMain.handle('fs:mv', (_e, source: string, target: string, option?: any) => fsMv(source, target, option))
-
-  ipcMain.handle('sys:openfile', (_e, options) => {
-    return openFile(options)
-  })
   ipcMain.handle('sys:savefile', (_e, content, options) => {
     return saveFile(content, options)
   })
-  ipcMain.handle('sys:delete', (_e, path, options)=>deleteFileOrDir(path, options))
   ipcMain.handle('sys:normalizepath', (_e, path: string)=>{
     return normalizePath(path)
   })

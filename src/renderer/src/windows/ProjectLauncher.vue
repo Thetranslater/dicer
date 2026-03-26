@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { SaveFileOptions, OpenFileOptions, OpenFileDetails } from '@renderer/utils/fileService'
+import type { SaveFileOptions, OpenOption } from '@renderer/utils/fileService'
 
 const selectedPath = ref('')
 const projectName = ref('default')
@@ -33,45 +33,41 @@ watch(projectName, () => {
   updateRootPreview()
 })
 
-async function chooseDirectory(exist: boolean): Promise<string | null> {
-  const chooseOptions: OpenFileOptions = {
-    behavior: 'path',
+async function chooseDirectory(_exist: boolean): Promise<string | null> {
+  const chooseOptions: OpenOption = {
     isMultiselection: false,
-    broadcastInfo: exist ? 'launcher-chooseproject' : 'launcher-createproject',
-    dialogProperties: exist ? ['openDirectory'] : ['openDirectory', 'createDirectory'],
-    dev: {
-      source: exist ? 'launcher-open-existing' : 'launcher-create-new',
-      message: ''
+    dialogOpenType: 'dir',
+    fileOption: {
+      isLoad: false,
+    },
+    dirOption: {
+      isRecursive: false,
     }
   }
 
-  const result = await window.api.openFileSignal(chooseOptions)
-  const details = result[2] as OpenFileDetails | undefined
-  if (details?.isDialogCanceled) return null
+  const fsnodes = await window.api.fs.open(chooseOptions)
+  if (fsnodes.length !== 1) return null
 
-  const pathValue = Array.isArray(result[0]) ? result[0][0] : result[0]
+  const pathValue = fsnodes[0].path
   if (typeof pathValue !== 'string' || pathValue.length === 0) return null
   return normalizePath(pathValue)
 }
 
 async function readExistingProjectConfig(projectDir: string): Promise<any> {
   const configPath = `${projectDir}/project.config.json`
-  const openConfigOptions: OpenFileOptions = {
-    path: [configPath],
-    behavior: 'content',
+  const openConfigOptions: OpenOption = {
     isMultiselection: false,
-    broadcastInfo: 'launcher-open-project-config',
-    dev: {
-      source: 'launcher-open-existing',
-      message: ''
+    dialogOpenType: 'file',
+    fileOption: {
+      isLoad: true,
+      path: [configPath]
     }
   }
 
-  const configResult = await window.api.openFileSignal(openConfigOptions)
-  const details = configResult[2] as OpenFileDetails | undefined
-  if (details?.isDialogCanceled) return null
+  const configResult = await window.api.fs.open(openConfigOptions)
+  if (configResult.length !== 1) return null
 
-  return JSON.parse(configResult[1] as string)
+  return JSON.parse(configResult[0].data)
 }
 
 async function chooseCreateRootPath(): Promise<void> {

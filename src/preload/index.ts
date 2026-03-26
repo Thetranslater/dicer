@@ -1,12 +1,6 @@
 ﻿import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import { electronAPI } from '@electron-toolkit/preload'
 
-type ImageItem = {
-  name: string
-  path: string
-  isDirectory: boolean
-}
-
 type ImageAttachmentMappingItem = {
   imagePath: string
   attachmentUrl: string
@@ -29,14 +23,6 @@ const api = {
   },
   saveFileSignal: (content: string | Buffer, options?) =>
     ipcRenderer.invoke('sys:savefile', content, options),
-  openFileChannel: (callback: (filePath: string | string[], content?: any, details?) => void) => {
-    ipcRenderer.on('sys:openfilec', (_event, filePath, content, details) => callback(filePath, content, details))
-  },
-  openFileSignal: (options?) => ipcRenderer.invoke('sys:openfile', options),
-  /**
-   * 删除一个（组）文件或文件夹
-   */
-  delete: (path : string | string[], options?: any)=> ipcRenderer.invoke('sys:delete', path, options),
   /**
    * 规范化一个路径，比如将D:\folder\..转成D:/
    */
@@ -80,21 +66,23 @@ const api = {
     ipcRenderer.invoke('images:get-attachment-mappings'),
   imagesSaveAttachmentMappings: (mappings: Record<string, string>): Promise<{ savedCount: number }> =>
     ipcRenderer.invoke('images:save-attachment-mappings', mappings),
-  //check-ListDir
-  imagesListDir: (directoryPath: string): Promise<ImageItem[]> => ipcRenderer.invoke('images:listdir', directoryPath),
   imagesCreateFolder: (parentPath: string, folderName?: string): Promise<string> =>
     ipcRenderer.invoke('images:create-folder', parentPath, folderName),
   imagesRename: (targetPath: string, nextName: string): Promise<string> =>
     ipcRenderer.invoke('images:rename', targetPath, nextName),
-  imagesMove: (sourcePath: string, targetDirectory: string): Promise<string> =>
-    ipcRenderer.invoke('images:move', sourcePath, targetDirectory),
   imagesImportDialog: (targetDirectory: string): Promise<string[]> =>
     ipcRenderer.invoke('images:import-dialog', targetDirectory),
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]): Promise<string[]> =>
     ipcRenderer.invoke('images:import-files', targetDirectory, sourceFilePaths),
 
   //TODO
-  on: (callback: (ch: string, ...args) => void) => ipcRenderer.on('BUS_CHANNEL', (event, ch, ...args)=>callback(ch, event, args))
+  on: (callback: (ch: string, ...args) => void) => ipcRenderer.on('BUS_CHANNEL', (event, ch, ...args)=>callback(ch, event, args)),
+  fs: {
+    open: (option?)=>ipcRenderer.invoke('fs:open', option),
+    save: (content: any[], option?) => ipcRenderer.invoke('fs:save', content, option),
+    mv: (source: string, target: string, option?) => ipcRenderer.invoke('fs:mv', source, target, option),
+    rm: (paths: string[], option?) => ipcRenderer.invoke('fs:rm', paths, option)
+  }
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

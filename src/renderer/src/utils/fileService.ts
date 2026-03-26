@@ -22,6 +22,7 @@ export type OpenOption = {
 
 export type SaveOption = {
   path?:string[]
+  dialogfilters?: {name: string, extensions: string[]}[]
 }
 
 //SaveFile

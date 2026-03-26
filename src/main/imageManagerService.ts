@@ -1,11 +1,10 @@
 ﻿import { dialog, ipcMain } from 'electron'
-import { copyFile, mkdir, readdir, rename, stat } from 'fs/promises'
+import { copyFile, mkdir, readdir, rename } from 'fs/promises'
 import { existsSync } from 'fs'
-import { basename, dirname, extname, isAbsolute, join, relative, resolve } from 'path'
+import { basename, dirname, extname, join, relative, resolve } from 'path'
 
 import { configManager } from './configManager'
 import { broadcast } from './windowManager'
-import { normalizePath } from './core'
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg',
@@ -23,12 +22,6 @@ const IMAGE_CONFIG_MODULE = 'image'
 type ImageManagerConfig = {
   rootPath: string | null
   attachmentMappings: Record<string, string>
-}
-
-type ImageItem = {
-  name: string
-  path: string
-  isDirectory: boolean
 }
 
 type ImageAttachmentMappingItem = {
@@ -82,11 +75,6 @@ async function writeConfig(config: ImageManagerConfig): Promise<void> {
   const normalized = normalizeConfig(config)
   configManager.set(IMAGE_CONFIG_MODULE, normalized)
   broadcast('sys:onconfig', configManager.getAll())
-}
-
-function isPathWithinRoot(rootPath: string, targetPath: string): boolean {
-  const rel = relative(resolve(rootPath), resolve(targetPath))
-  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
 
 async function requireRootPath(): Promise<string> {
@@ -262,33 +250,6 @@ export function registerImageManagerIpcHandlers(): void {
     }
   })
 
-  ipcMain.handle('images:listdir', async (_event, directoryPath: string) => {
-    directoryPath = normalizePath(directoryPath)
-    const entries = await readdir(directoryPath, { withFileTypes: true })
-    const rawItems = await Promise.all(
-      entries.map(async (entry) => {
-        try {
-          const fullPath = join(directoryPath, entry.name)
-          const extension = extname(entry.name).toLowerCase()
-
-          if (!entry.isDirectory() && !IMAGE_EXTENSIONS.has(extension)) {
-            return null
-          }
-
-          return {
-            name: entry.name,
-            path: normalizePath(fullPath),
-            isDirectory: entry.isDirectory(),
-          } satisfies ImageItem
-        } catch {
-          return null
-        }
-      })
-    )
-
-    return rawItems.filter((item): item is ImageItem => item !== null)
-  })
-
   ipcMain.handle('images:create-folder', async (_event, parentPath: string, folderName?: string) => {
     await requireRootPath()
     const resolvedParent = resolve(parentPath)
@@ -318,28 +279,6 @@ export function registerImageManagerIpcHandlers(): void {
     const nextPath = resolve(join(targetDir, safeName))
 
     await rename(resolvedTarget, nextPath)
-    return nextPath
-  })
-
-  ipcMain.handle('images:move', async (_event, sourcePath: string, targetDirectory: string) => {
-    await requireRootPath()
-    const resolvedSource = resolve(sourcePath)
-    const resolvedTargetDir = resolve(targetDirectory)
-
-    if (!existsSync(resolvedSource)) {
-      throw new Error('Source path does not exist')
-    }
-    if (!existsSync(resolvedTargetDir)) {
-      throw new Error('Target directory does not exist')
-    }
-
-    const sourceStats = await stat(resolvedSource)
-    if (sourceStats.isDirectory() && isPathWithinRoot(resolvedSource, resolvedTargetDir)) {
-      throw new Error('Cannot move a folder into itself or its subdirectory')
-    }
-
-    const nextPath = await getUniquePath(resolvedTargetDir, basename(resolvedSource))
-    await rename(resolvedSource, nextPath)
     return nextPath
   })
 

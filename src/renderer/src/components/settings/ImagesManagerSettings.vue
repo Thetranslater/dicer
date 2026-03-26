@@ -1,6 +1,6 @@
 ﻿<script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue'
-import type { OpenFileOptions } from '../../utils/fileService'
+import type { OpenOption } from '../../utils/fileService'
 
 type ImageAttachmentMappingItem = {
   imagePath: string
@@ -80,19 +80,19 @@ function onMappingInput(index: number, event: Event): void {
 async function chooseRootDirectory() {
   errorMessage.value = ''
 
-  const options: OpenFileOptions = {
-    behavior: 'path',
+  const option: OpenOption = {
     isMultiselection: false,
-    broadcastInfo: 'settings-images-choose-root',
-    dialogProperties: ['openDirectory', 'createDirectory'],
-    dev: {
-      source: 'settings-images-chooseRootDirectory',
-      message: 'Choose root directory for image manager settings'
+    dialogOpenType: 'dir',
+    fileOption: {
+      isLoad: false
+    },
+    dirOption: {
+      isRecursive: false
     }
   }
 
-  const result = await window.api.openFileSignal(options)
-  const selectedPath = Array.isArray(result[0]) ? result[0][0] : result[0]
+  const result = await window.api.fs.open(option)
+  const selectedPath = result[0].path
   if (!selectedPath) return
 
   try {

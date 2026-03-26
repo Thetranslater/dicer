@@ -12,7 +12,7 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import type { OpenFileOptions, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
+import type { OpenOption, SaveFileDetails, SaveFileOptions, FSNode, SaveOption } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
 import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
@@ -50,13 +50,11 @@ const editor = useEditor({
     DetailsSummary,
     DetailsContent,
     Image.configure({
-      resize: {
-        enabled: true,
-        directions: ['top', 'bottom', 'left', 'right'],
-        minWidth: 50,
-        minHeight: 50,
-        alwaysPreserveAspectRatio: true
-      }
+      inline: true,
+      // resize: {
+      //   enabled: true,
+      //   alwaysPreserveAspectRatio: true
+      // }
     })
   ],
   content: '',
@@ -196,69 +194,35 @@ function serializeEditorContent(format: 'html' | 'json'): string {
   return editor.value.getHTML()
 }
 
-function buildEditorSaveOptions(path?: string): SaveFileOptions {
-  return {
-    path,
-    broadcastInfo: 'menu-savefile',
-    isBinary: false,
-    encoding: 'utf-8',
-    dialogfilters: [
-      { name: 'HTML', extensions: ['html', 'htm'] },
-      { name: 'JSON', extensions: ['json'] }
-    ],
-    dev: {
-      source: 'editor-save',
-      message: 'Editor unified save'
-    }
-  }
-}
-
 async function saveEditorContent(trigger: SaveTrigger, forceChoosePath = false): Promise<boolean> {
   if (!editor.value) return false
 
   const directPath = !forceChoosePath && hasRelatedPath.value ? relatedPath.value : undefined
   const initialFormat = directPath ? inferFormatFromPath(directPath) : 'html'
   const initialContent = serializeEditorContent(initialFormat)
-  const options = buildEditorSaveOptions(directPath)
+  const option: SaveOption = {
+    path: directPath ? [directPath] : undefined,
+    dialogfilters: [{ name: initialFormat === 'json' ? 'JSON' : 'HTML', extensions: [initialFormat] }]
+  }
 
-  let details: SaveFileDetails | undefined
+  let targets
   try {
-    details = await window.api.saveFileSignal(initialContent, options) as SaveFileDetails
+    targets = await window.api.fs.save(initialContent, option)
   } catch (error) {
     setSaveStatus(`Save failed (${trigger})`, { error })
     return false
   }
 
-  if (details?.isDialogCanceled) {
-    setSaveStatus(`Save canceled (${trigger})`)
-    return false
-  }
-
-  const resolvedPath = details?.savedPath ?? directPath
-  if (!resolvedPath) {
-    setSaveStatus(`Save failed (${trigger}): no target path`)
-    return false
-  }
-
-  relatedPath.value = resolvedPath
-  const finalFormat = inferFormatFromPath(resolvedPath)
-
-  if (!directPath && finalFormat !== initialFormat) {
-    const rewriteContent = serializeEditorContent(finalFormat)
-    await window.api.saveFileSignal(rewriteContent, buildEditorSaveOptions(resolvedPath))
-  }
+  relatedPath.value = targets[0]
 
   isDirty.value = false
-  setSaveStatus(`Saved (${trigger})`, { path: resolvedPath, format: finalFormat })
   return true
 }
 
 async function handleBeforeFileSwitch(): Promise<boolean> {
-  if (!isDirty.value) return true
-
-  const shouldSave = window.confirm('Current document has unsaved changes. Save before opening another file?')
-  if (!shouldSave) {
-    //setSaveStatus('Switched without saving previous content')
+  //const shouldSave = window.confirm('Current document has unsaved changes. Save before opening another file?')
+  if (!isDirty.value) {
+    setSaveStatus('Switched without saving previous content')
     return true
   }
 
@@ -355,8 +319,9 @@ function IpcCallbackRegister() {
   window.api.on(async (ch, _event, args) => {
     if (ch && ch === 'menu-open') {
       if (!editor.value) return
-      const filePath = args[0] as string
-      const content = args[1] as string
+      const fsnode = (args[0] as FSNode[])[0]
+      const content = fsnode.data
+      const filePath = fsnode.path
       if (!content) return
 
       const proceed = await handleBeforeFileSwitch()
@@ -474,23 +439,19 @@ const insertDetails = () => {
 }
 const insertImage = async () => {
   // 调用主进程打开图片对话框
-  const options: OpenFileOptions = {
-    behavior: 'path',
-    isMultiselection: true,
-    broadcastInfo: 'editor-insertimage',
-    dialogProperties: ['openFile'],
-    dev: {
-      source: 'Editor.vue-insertImage',
-      message: '编辑器插入图片'
+  const option: OpenOption = {
+    isMultiselection: false,
+    dialogOpenType: 'file',
+    fileOption: {
+      isLoad: false
     }
   }
-  const result = await window.api.openFileSignal(options)
-  const filePath = result[0]
+  const result = await window.api.fs.open(option)
+  const fsnode = result[0]
   if (!editor.value) return
 
-  const imagePath = `app://${filePath}`
+  const imagePath = `app://${fsnode.path}`
   editor.value.chain().focus().setImage({ src: imagePath }).run()
-
 }
 
 watch(editor, (newInstance) => {

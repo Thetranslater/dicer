@@ -5,7 +5,7 @@ import { electronApp, optimizer} from '@electron-toolkit/utils'
 // import { URL } from 'url'
 
 import { windowManager} from './windowManager'
-import { openFile, registerCoreIpcHandlers } from './core'
+import { fsOpen, registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 import type { OpenFileOptions, OpenOption } from '../renderer/src/utils/fileService'
 import { registerConfigIpcHandlers } from './configManager'
@@ -21,17 +21,14 @@ function registerLocalProtocol(): void {
     // 例如 C/User/... -> C:/Users/...
     filePath = filePath.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
     const options : OpenFileOptions = {
-      path : [filePath],
-      behavior : 'content',
-      dialogfilters : [{name : 'img', extensions : ['jpg', 'png', 'jpeg', 'gif', 'bmp', 'svg','tif']}],
-      dialogProperties : ['openFile'],
-      dev:{
-        source:'app protocol request',
-        message: 'app protocol request'
+      fileOption:{
+        path: [filePath],
+        isLoad: true,
+        dialogfilters: [{name : 'img', extensions : ['jpg', 'png', 'jpeg', 'gif', 'bmp', 'svg','tif']}]
       }
     }
-    const result = await openFile(options)
-    return new Response(result[1] as any)
+    const result = await fsOpen(options)
+    return new Response(result[0].data as any)
   })
 }
 
@@ -141,21 +138,9 @@ app.whenReady().then(() => {
                   }
                 }
 
-                const result = await openFile({
-                  behavior: 'content',
-                  isMultiselection: false,
-                  broadcastInfo: 'menu-openfile',
-                  dialogfilters: [{name: 'HTML',extensions: ['html', 'htm']}, {name:'JSON', extensions:['json']}],
-                  dialogProperties: ['openFile'],
-                  dev :{
-                    source: 'menu-open-click',
-                    message: '由菜单点击打开选项触发'
-                  }
-                })
-                if (!result[2].isDialogCanceled){
-                  const filePath = result[0]
-                  const content = result[1]
-                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', filePath, content)
+                const result = fsOpen(option)
+                if (result.length === 1){
+                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', result)
                 }
               }
               catch (error){
