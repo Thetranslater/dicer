@@ -139,7 +139,7 @@ function serializeList(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
     .join('')
 
   if (!items) return ''
-  return `[list]\n${items}[/list]\n\n`
+  return `[list]\n${items}[/list]\n`
 }
 
 function serializeTable(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
@@ -241,10 +241,10 @@ function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
     case 'h5':
     case 'h6': {
       const content = serializeChildren(el, options).trim()
-      return content ? `[h]${content}[/h]\n\n` : ''
+      return content ? `[h]${content}[/h]\n` : ''
     }
     case 'hr':
-      return '[h][/h]\n\n'
+      return '[h][/h]\n'
     case 'p':
     case 'div': {
       const inner = serializeChildren(el, options)

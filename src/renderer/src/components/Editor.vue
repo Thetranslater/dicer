@@ -10,7 +10,7 @@ import { TableHeader } from '@tiptap/extension-table-header'
 import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
-import Image from '@tiptap/extension-image'
+import Image from '../extensions/image-freely/ImageFreely'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
 import type { OpenOption, SaveFileDetails, SaveFileOptions, FSNode, SaveOption } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
@@ -51,10 +51,11 @@ const editor = useEditor({
     DetailsContent,
     Image.configure({
       inline: true,
-      // resize: {
-      //   enabled: true,
-      //   alwaysPreserveAspectRatio: true
-      // }
+      resize: {
+        enabled: true,
+        minWidth: 10,
+        alwaysPreserveAspectRatio: true
+      }
     })
   ],
   content: '',
@@ -451,6 +452,7 @@ const insertImage = async () => {
   if (!editor.value) return
 
   const imagePath = `app://${fsnode.path}`
+  //editor.value.chain().focus().insertContent('<img src="app://C:/Users/Mage/Desktop/redface.gif" contenteditable="false" draggable="true">').run()
   editor.value.chain().focus().setImage({ src: imagePath }).run()
 }
 
