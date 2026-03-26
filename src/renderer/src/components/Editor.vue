@@ -12,7 +12,7 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import type { FSNode, OpenFileOptions, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
+import type { OpenFileOptions, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
 import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
@@ -59,7 +59,7 @@ const editor = useEditor({
       }
     })
   ],
-  content: '<p>欢迎使用安科编辑器...</p>',
+  content: '',
   onUpdate: () => {
     if (suppressDirtyTracking.value) return
     isDirty.value = true
@@ -258,7 +258,7 @@ async function handleBeforeFileSwitch(): Promise<boolean> {
 
   const shouldSave = window.confirm('Current document has unsaved changes. Save before opening another file?')
   if (!shouldSave) {
-    setSaveStatus('Switched without saving previous content')
+    //setSaveStatus('Switched without saving previous content')
     return true
   }
 
@@ -355,20 +355,21 @@ function IpcCallbackRegister() {
   window.api.on(async (ch, _event, args) => {
     if (ch && ch === 'menu-open') {
       if (!editor.value) return
-      const fsnode = (args[0] as FSNode[])[0]
-      if (!fsnode.data) return
+      const filePath = args[0] as string
+      const content = args[1] as string
+      if (!content) return
 
       const proceed = await handleBeforeFileSwitch()
       if (!proceed) return
 
-      const targetPath = fsnode.path
+      const targetPath = typeof filePath === 'string' ? filePath : filePath[0]
       const ext = targetPath?.split('.').pop()?.toLowerCase()
 
       suppressDirtyTracking.value = true
       try {
         if (ext === 'json') {
           try {
-            const json = JSON.parse(fsnode.data as string)
+            const json = JSON.parse(content as string)
             editor.value.commands.setContent(json)
           } catch (e) {
             console.error('Failed to parse JSON:', e)
@@ -376,7 +377,7 @@ function IpcCallbackRegister() {
             return
           }
         } else {
-          editor.value.commands.setContent(fsnode.data as string)
+          editor.value.commands.setContent(content as string)
         }
 
         relatedPath.value = targetPath ?? ''

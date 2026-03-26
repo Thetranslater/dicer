@@ -5,7 +5,7 @@ import { electronApp, optimizer} from '@electron-toolkit/utils'
 // import { URL } from 'url'
 
 import { windowManager} from './windowManager'
-import { fsOpen, openFile, registerCoreIpcHandlers } from './core'
+import { openFile, registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 import type { OpenFileOptions, OpenOption } from '../renderer/src/utils/fileService'
 import { registerConfigIpcHandlers } from './configManager'
@@ -141,9 +141,21 @@ app.whenReady().then(() => {
                   }
                 }
 
-                const result = fsOpen(option)
-                if (result.length === 1){
-                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', result)
+                const result = await openFile({
+                  behavior: 'content',
+                  isMultiselection: false,
+                  broadcastInfo: 'menu-openfile',
+                  dialogfilters: [{name: 'HTML',extensions: ['html', 'htm']}, {name:'JSON', extensions:['json']}],
+                  dialogProperties: ['openFile'],
+                  dev :{
+                    source: 'menu-open-click',
+                    message: '由菜单点击打开选项触发'
+                  }
+                })
+                if (!result[2].isDialogCanceled){
+                  const filePath = result[0]
+                  const content = result[1]
+                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', filePath, content)
                 }
               }
               catch (error){
