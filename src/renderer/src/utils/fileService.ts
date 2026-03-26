@@ -1,6 +1,27 @@
 export type FSNode = {
+  path: string
   name: string
+  isDir: boolean
+  data?: any
   children?: FSNode[]
+}
+
+export type OpenOption = {
+  isMultiselection?:boolean
+  dialogOpenType?: 'file' | 'dir'
+  fileOption?:{
+    path?:string[]
+    isLoad?:boolean
+    dialogfilters?:{name: string, extensions: string[]}[]
+  }
+  dirOption?:{
+    path?:string[]
+    isRecursive?:boolean
+  }
+}
+
+export type SaveOption = {
+  path?:string[]
 }
 
 //SaveFile
@@ -37,16 +58,15 @@ export type OpenFileOptions = {
   broadcastInfo?: string
   dialogfilters?: {name: string, extensions: string[]}[]
   dialogProperties?: ("openFile" | "openDirectory" | "multiSelections" | "showHiddenFiles" | "createDirectory" | "promptToCreate" | "noResolveAliases" | "treatPackageAsDirectory" | "dontAddToRecent")[]
-  fileOptions?:{
+  fileOption?:{
     path?:string[]
     isLoad?:boolean
     isMultiselection?:boolean
     dialogfilters?:{name: string, extensions: string[]}[]
   }
-  dirOptions?:{
+  dirOption?:{
     path?:string[]
     isRecursive?:boolean
-    isList?:boolean
   }
   
   dev?:{

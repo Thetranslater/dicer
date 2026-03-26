@@ -5,9 +5,9 @@ import { electronApp, optimizer} from '@electron-toolkit/utils'
 // import { URL } from 'url'
 
 import { windowManager} from './windowManager'
-import { openFile, registerCoreIpcHandlers } from './core'
+import { fsOpen, openFile, registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
-import { OpenFileOptions } from '../renderer/src/utils/fileService'
+import type { OpenFileOptions, OpenOption } from '../renderer/src/utils/fileService'
 import { registerConfigIpcHandlers } from './configManager'
 
 
@@ -132,21 +132,18 @@ app.whenReady().then(() => {
           accelerator: 'CmdOrCtrl+O',
           click: async () => {
               try{
-                const result = await openFile({
-                  behavior: 'content',
+                const option : OpenOption = {
                   isMultiselection: false,
-                  broadcastInfo: 'menu-openfile',
-                  dialogfilters: [{name: 'HTML',extensions: ['html', 'htm']}, {name:'JSON', extensions:['json']}],
-                  dialogProperties: ['openFile'],
-                  dev :{
-                    source: 'menu-open-click',
-                    message: '由菜单点击打开选项触发'
+                  dialogOpenType: 'file',
+                  fileOption : {
+                    isLoad: true,
+                    dialogfilters: [{name: 'HTML', extensions: ['html', 'htm']}, {name: 'JSON', extensions: ['json']}]
                   }
-                })
-                if (!result[2].isDialogCanceled){
-                  const filePath = result[0]
-                  const content = result[1]
-                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', filePath, content)
+                }
+
+                const result = fsOpen(option)
+                if (result.length === 1){
+                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', result)
                 }
               }
               catch (error){

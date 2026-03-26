@@ -12,7 +12,7 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '@tiptap/extension-image'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import type { OpenFileOptions, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
+import type { FSNode, OpenFileOptions, SaveFileDetails, SaveFileOptions } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
 import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
@@ -355,21 +355,20 @@ function IpcCallbackRegister() {
   window.api.on(async (ch, _event, args) => {
     if (ch && ch === 'menu-open') {
       if (!editor.value) return
-      const filePath = args[0] as string
-      const content = args[1] as string
-      if (!content) return
+      const fsnode = (args[0] as FSNode[])[0]
+      if (!fsnode.data) return
 
       const proceed = await handleBeforeFileSwitch()
       if (!proceed) return
 
-      const targetPath = typeof filePath === 'string' ? filePath : filePath[0]
+      const targetPath = fsnode.path
       const ext = targetPath?.split('.').pop()?.toLowerCase()
 
       suppressDirtyTracking.value = true
       try {
         if (ext === 'json') {
           try {
-            const json = JSON.parse(content as string)
+            const json = JSON.parse(fsnode.data as string)
             editor.value.commands.setContent(json)
           } catch (e) {
             console.error('Failed to parse JSON:', e)
@@ -377,7 +376,7 @@ function IpcCallbackRegister() {
             return
           }
         } else {
-          editor.value.commands.setContent(content as string)
+          editor.value.commands.setContent(fsnode.data as string)
         }
 
         relatedPath.value = targetPath ?? ''

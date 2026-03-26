@@ -53,13 +53,13 @@ export interface IAPI {
   imagesImportDialog: (targetDirectory: string) => Promise<string[]>
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]) => Promise<string[]>
 
-  //
+  //new modularized API
   fs: {
-    open: (options?)=>any
-    save: (content, options?)=>any
-    mkdir: (path, options?)=>any
-    rm: (path, options?)=>any
-    mv: (source, target, options?)=>any
+    open: (option?)=>any
+    save: (content, option?)=>any
+    mkdir: (path, option?)=>any
+    rm: (path, option?)=>any
+    mv: (source, target, option?)=>any
   }
   path: {
     normalize: (path)=>any
