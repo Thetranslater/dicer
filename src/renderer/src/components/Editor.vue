@@ -124,6 +124,41 @@ const colors = [
 ]
 const showColorPalette = ref(false)
 const colorPickerRef = ref<HTMLElement | null>(null)
+const showEmojiPanel = ref(false)
+const activeEmojiGroup = ref<'ac1' | 'ac2'>('ac1')
+const emojiPickerRef = ref<HTMLElement | null>(null)
+
+type EmojiItem = {
+  name: string
+  src: string
+}
+
+const ac1EmojiModules = import.meta.glob('../assets/emoji/ac1/*.png', {
+  eager: true,
+  import: 'default'
+}) as Record<string, string>
+
+const ac2EmojiModules = import.meta.glob('../assets/emoji/ac2/*.png', {
+  eager: true,
+  import: 'default'
+}) as Record<string, string>
+
+function buildEmojiItems(modules: Record<string, string>): EmojiItem[] {
+  return Object.entries(modules)
+    .map(([path, src]) => {
+      const fileName = path.split('/').pop() ?? path
+      const name = fileName.replace(/\.png$/i, '')
+      return { name, src }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }))
+}
+
+const emojiGroups: Record<'ac1' | 'ac2', EmojiItem[]> = {
+  ac1: buildEmojiItems(ac1EmojiModules),
+  ac2: buildEmojiItems(ac2EmojiModules)
+}
+
+const currentEmojiItems = computed(() => emojiGroups[activeEmojiGroup.value])
 
 type ImageExportConfig = {
   rootPath: string | null
@@ -411,11 +446,25 @@ const toggleColorPalette = () => {
   showColorPalette.value = !showColorPalette.value
 }
 
+const toggleEmojiPanel = () => {
+  showEmojiPanel.value = !showEmojiPanel.value
+}
+
+const setEmojiGroup = (group: 'ac1' | 'ac2') => {
+  activeEmojiGroup.value = group
+}
+
 const handleGlobalMouseDown = (event: MouseEvent) => {
-  if (!showColorPalette.value) return
   const target = event.target as Node | null
-  if (colorPickerRef.value && target && colorPickerRef.value.contains(target)) return
-  showColorPalette.value = false
+  if (!target) return
+
+  if (showColorPalette.value && colorPickerRef.value && !colorPickerRef.value.contains(target)) {
+    showColorPalette.value = false
+  }
+
+  if (showEmojiPanel.value && emojiPickerRef.value && !emojiPickerRef.value.contains(target)) {
+    showEmojiPanel.value = false
+  }
 }
 
 // 处理格式按钮点击（只响应鼠标，键盘触发时 event.detail === 0）
@@ -454,6 +503,12 @@ const insertImage = async () => {
   const imagePath = `app://${fsnode.path}`
   //editor.value.chain().focus().insertContent('<img src="app://C:/Users/Mage/Desktop/redface.gif" contenteditable="false" draggable="true">').run()
   editor.value.chain().focus().setImage({ src: imagePath }).run()
+}
+
+const insertEmoji = (src: string) => {
+  if (!editor.value) return
+  editor.value.chain().focus().setImage({ src }).run()
+  showEmojiPanel.value = false
 }
 
 watch(editor, (newInstance) => {
@@ -653,6 +708,28 @@ onBeforeUnmount(() => {
           &#128444;
         </button>
       </div>
+
+      <div class="toolbar-group emoji-group" ref="emojiPickerRef">
+        <button type="button" @click="toggleEmojiPanel" title="Insert Emoji">
+          &#128578;
+        </button>
+        <div v-show="showEmojiPanel" class="emoji-panel">
+          <div class="emoji-tabs">
+            <button type="button" :class="{ active: activeEmojiGroup === 'ac1' }" @click="setEmojiGroup('ac1')">
+              ac1
+            </button>
+            <button type="button" :class="{ active: activeEmojiGroup === 'ac2' }" @click="setEmojiGroup('ac2')">
+              ac2
+            </button>
+          </div>
+          <div class="emoji-grid">
+            <button v-for="emoji in currentEmojiItems" :key="emoji.src" type="button" class="emoji-item"
+              :title="emoji.name" @click="insertEmoji(emoji.src)">
+              <img :src="emoji.src" :alt="emoji.name" />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- 编辑区域 -->
@@ -782,6 +859,86 @@ onBeforeUnmount(() => {
 .color-swatch.active {
   outline: 2px solid #4a90d9;
   outline-offset: 1px;
+}
+
+.emoji-group {
+  position: relative;
+}
+
+.emoji-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  left: auto;
+  z-index: 24;
+  width: min(320px, calc(100vw - 32px));
+  max-height: min(240px, calc(100vh - 180px));
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.emoji-tabs {
+  display: flex;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.emoji-tabs button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 6px 10px;
+  height: 30px;
+}
+
+.emoji-tabs button.active {
+  background: #eef3ff;
+  color: #1f2937;
+  border-bottom: 2px solid #4a90d9;
+}
+
+.emoji-group .emoji-panel .emoji-grid {
+  padding: 8px;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 50px);
+  grid-auto-rows: 50px;
+  gap: 4px;
+  justify-content: start;
+}
+
+.emoji-group .emoji-panel .emoji-grid .emoji-item {
+  box-sizing: border-box;
+  width: 50px;
+  min-width: 50px;
+  max-width: 50px;
+  height: 50px;
+  min-height: 50px;
+  max-height: 50px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 50px;
+
+  &:hover {
+    border-color: #9bb4d4;
+    background: #f5f8ff;
+  }
+}
+
+.emoji-group .emoji-panel .emoji-grid .emoji-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 .editor-wrapper {
@@ -1045,7 +1202,6 @@ onBeforeUnmount(() => {
   &:before {
     content: '\25B6';
   }
-
 }
 
 .editor-content :deep(.tiptap hr) {
@@ -1057,9 +1213,5 @@ onBeforeUnmount(() => {
   &.ProseMirror-selectednode {
     border-top: 1px solid purple;
   }
-}
-
-.editor-content :deep(.tiptap img) {
-  display: blcok;
 }
 </style>
