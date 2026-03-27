@@ -80,12 +80,40 @@ class ConfigManager {
 
   get(moduleName: string): any {
     if (!MODULE_NAMES.has(moduleName)) return undefined
-    if (moduleName === 'project') return { root: this.config['root'], name: this.config['name'] }
+    if (moduleName === 'project') {
+      return {
+        root: this.config['root'],
+        name: this.config['name'],
+        useTrueRandom: this.config['useTrueRandom']
+      }
+    }
     return this.config[moduleName]
   }
 
   set(moduleName: string, configJson: unknown): boolean {
     if (!MODULE_NAMES.has(moduleName)) return false
+
+    if (moduleName === 'project') {
+      if (!isPlainObject(configJson)) return false
+      const projectConfig = configJson as Record<string, unknown>
+
+      if (typeof projectConfig.root === 'string' && projectConfig.root.trim().length > 0) {
+        this.config.root = projectConfig.root
+      }
+
+      if (typeof projectConfig.name === 'string' && projectConfig.name.trim().length > 0) {
+        this.config.name = projectConfig.name
+      }
+
+      if (typeof projectConfig.useTrueRandom === 'boolean') {
+        this.config.useTrueRandom = projectConfig.useTrueRandom
+      }
+
+      this.loaded = true
+      this.persistToDisk()
+      return true
+    }
+
     this.config[moduleName] = configJson
 
     this.loaded = true

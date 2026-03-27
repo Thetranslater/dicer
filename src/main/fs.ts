@@ -38,26 +38,29 @@ function readDirectoryChildren(directoryPath: string, isRecursive: boolean, isLo
     for (const entry of entries) {
         const fullPath = join(directoryPath, entry)
         const normalized = DPath.normalizePath(fullPath)
-        const entryStat = statSync(fullPath)
-
-        if (entryStat.isDirectory()) {
-            const dirNode: FSNode = {
-                path: normalized,
-                name: entry,
-                isDir: true,
-                children: isRecursive ? readDirectoryChildren(fullPath, true, isLoadFile) : []
+        //ignore system files
+        try {
+            const entryStat = statSync(fullPath)
+            if (entryStat.isDirectory()) {
+                const dirNode: FSNode = {
+                    path: normalized,
+                    name: entry,
+                    isDir: true,
+                    children: isRecursive ? readDirectoryChildren(fullPath, true, isLoadFile) : []
+                }
+                children.push(dirNode)
+                continue
             }
-            children.push(dirNode)
+            if (entryStat.isFile()) {
+                children.push({
+                    path: normalized,
+                    name: entry,
+                    isDir: false,
+                    ...(isLoadFile ? { data: loadFileData(fullPath) } : {})
+                })
+            }
+        } catch (error) {
             continue
-        }
-
-        if (entryStat.isFile()) {
-            children.push({
-                path: normalized,
-                name: entry,
-                isDir: false,
-                ...(isLoadFile ? { data: loadFileData(fullPath) } : {})
-            })
         }
     }
 
@@ -133,9 +136,14 @@ function resolveFsOpenTargets(option?: OpenOption): { filePaths: string[]; dirPa
         const normalized = DPath.normalizePath(selectedPath)
         if (!existsSync(normalized)) continue
 
-        const st = statSync(normalized)
-        if (st.isFile()) resolvedFiles.push(normalized)
-        if (st.isDirectory()) resolvedDirs.push(normalized)
+        //ignore system files
+        try {
+            const st = statSync(normalized)
+            if (st.isFile()) resolvedFiles.push(normalized)
+            if (st.isDirectory()) resolvedDirs.push(normalized)
+        } catch (error) {
+            continue
+        }
     }
 
     return { filePaths: resolvedFiles, dirPaths: resolvedDirs, dialogCanceled: false }
@@ -240,6 +248,32 @@ function fsMv(source: string, target: string, _option?: any): void {
         rmSync(normalizedSource, { recursive: true, force: false })
     }
 }
+function fsRnm(targetPath: string, nextName: string, _option?: any): string {
+    const normalizedTarget = DPath.normalizePath(targetPath)
+    const normalizedName = DPath.normalizePath(nextName)
+
+    if (!existsSync(normalizedTarget)) {
+        throw new Error(`Target path does not exist: ${normalizedTarget}`)
+    }
+
+    if (/[\\/:*?"<>|]/.test(normalizedName)) {
+        throw new Error(`Invalid file or directory name: ${normalizedName}`)
+    }
+
+    const parent = dirname(normalizedTarget)
+    const finalPath = DPath.normalizePath(join(parent, normalizedName))
+
+    if (normalizedTarget.toLowerCase() === finalPath.toLowerCase()) {
+        return finalPath
+    }
+
+    if (existsSync(finalPath)) {
+        throw new Error(`Target path already exists: ${finalPath}`)
+    }
+
+    renameSync(normalizedTarget, finalPath)
+    return finalPath
+}
 
 export const DFS = {
     fsOpen,
@@ -247,11 +281,13 @@ export const DFS = {
     fsMkdir,
     fsRm,
     fsMv,
+    fsRnm,
     registerIPC() {
         ipcMain.handle('fs:open', (_e, option?: OpenOption) => fsOpen(option))
         ipcMain.handle('fs:save', (_e, content: any[], option?: SaveOption) => fsSave(content, option))
         ipcMain.handle('fs:mkdir', (_e, path: string, option?: any) => fsMkdir(path, option))
         ipcMain.handle('fs:rm', (_e, paths: string[], option?: any) => fsRm(paths, option))
         ipcMain.handle('fs:mv', (_e, source: string, target: string, option?: any) => fsMv(source, target, option))
+        ipcMain.handle('fs:rnm', (_e, targetPath: string, nextName: string, option?: any) => fsRnm(targetPath, nextName, option))
     }
 }

@@ -1,4 +1,12 @@
 {
   "root": "D:/Programs/projects/dicer/dicer/projects/Document/Dicer",
-  "name": "Dicer"
+  "name": "Dicer",
+  "editor": {
+    "baseFontSizePx": 16
+  },
+  "image": {
+    "rootPath": "D:/Programs/projects/dicer/dicer/test",
+    "attachmentMappings": {}
+  },
+  "useTrueRandom": false
 }

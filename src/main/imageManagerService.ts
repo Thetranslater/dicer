@@ -1,7 +1,7 @@
 ﻿import { dialog, ipcMain } from 'electron'
-import { copyFile, mkdir, readdir, rename } from 'fs/promises'
+import { copyFile, mkdir, readdir } from 'fs/promises'
 import { existsSync } from 'fs'
-import { basename, dirname, extname, join, relative, resolve } from 'path'
+import { basename, extname, join, relative, resolve } from 'path'
 
 import { configManager } from './configManager'
 import { broadcast } from './windowManager'
@@ -265,21 +265,6 @@ export function registerImageManagerIpcHandlers(): void {
     }
 
     return createFolderWithAutoName(resolvedParent)
-  })
-
-  ipcMain.handle('images:rename', async (_event, targetPath: string, nextName: string) => {
-    await requireRootPath()
-    const resolvedTarget = resolve(targetPath)
-    if (!existsSync(resolvedTarget)) {
-      throw new Error('Target path does not exist')
-    }
-
-    const safeName = sanitizeName(nextName)
-    const targetDir = dirname(resolvedTarget)
-    const nextPath = resolve(join(targetDir, safeName))
-
-    await rename(resolvedTarget, nextPath)
-    return nextPath
   })
 
   ipcMain.handle('images:import-dialog', async (_event, targetDirectory: string) => {

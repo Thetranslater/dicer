@@ -36,8 +36,6 @@ const api = {
     ipcRenderer.invoke('images:save-attachment-mappings', mappings),
   imagesCreateFolder: (parentPath: string, folderName?: string): Promise<string> =>
     ipcRenderer.invoke('images:create-folder', parentPath, folderName),
-  imagesRename: (targetPath: string, nextName: string): Promise<string> =>
-    ipcRenderer.invoke('images:rename', targetPath, nextName),
   imagesImportDialog: (targetDirectory: string): Promise<string[]> =>
     ipcRenderer.invoke('images:import-dialog', targetDirectory),
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]): Promise<string[]> =>
@@ -49,7 +47,8 @@ const api = {
     open: (option?) => ipcRenderer.invoke('fs:open', option),
     save: (content: any[], option?) => ipcRenderer.invoke('fs:save', content, option),
     mv: (source: string, target: string, option?) => ipcRenderer.invoke('fs:mv', source, target, option),
-    rm: (paths: string[], option?) => ipcRenderer.invoke('fs:rm', paths, option)
+    rm: (paths: string[], option?) => ipcRenderer.invoke('fs:rm', paths, option),
+    rnm: (target: string, next: string, option?) => ipcRenderer.invoke('fs:rnm', target, next, option)
   },
   path: {
     /**

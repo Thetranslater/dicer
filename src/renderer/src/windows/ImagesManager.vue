@@ -97,7 +97,7 @@ async function loadDirectory(path: string): Promise<void> {
 
 //#region 'reactive properties'
 const hasRoot = computed(() => Boolean(rootPath.value))
-const canGoUp = computed(() => { console.log('canGoUp computed'); return Boolean(parentPath.value) })
+const canGoUp = computed(() => { return Boolean(parentPath.value) })
 const sortedItems = computed(() => {
   console.log('sorted:', items.value)
   const list = [...items.value]
@@ -229,6 +229,7 @@ async function chooseRootDirectory(): Promise<void> {
     }
     const savedResult = await window.api.cfg.set(IMAGESMANAGER_MODULE_NAME, config)
     if (savedResult) {
+      rootPath.value = selectedPath
       await loadDirectory(selectedPath)
       statusMessage.value = `Root updated: ${selectedPath}`
     }
@@ -469,9 +470,9 @@ async function commitRename(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const renamedPath = await window.api.imagesRename(targetPath, nextName)
+    const renamedPath = await window.api.fs.rnm(targetPath, nextName)
     statusMessage.value = `Renamed to: ${nextName}`
-    await loadDirectory(currentPath.value)
+    refresh()
     selectedPaths.value = [renamedPath]
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
@@ -560,7 +561,7 @@ watch(currentPath, async (newValue) => {
 
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown)
-  void initialize()
+  initialize()
 })
 
 onBeforeUnmount(() => {
@@ -572,16 +573,16 @@ onBeforeUnmount(() => {
   <div class="images-window" @dragover.prevent.stop="onWorkspaceDragOver" @drop.prevent.stop="onWorkspaceDrop">
     <div class="toolbar">
       <div class="toolbar-left">
-        <button @click="goUp" :disabled="!canGoUp || loading" title="Go up">Up</button>
-        <button @click="refresh" :disabled="!hasRoot || loading" title="Refresh">Refresh</button>
+        <button @click="goUp" :disabled="!canGoUp || loading" title="Go up">&lt;-</button>
+        <button @click="refresh" :disabled="!hasRoot || loading" title="Refresh">刷新</button>
       </div>
 
       <div class="toolbar-spacer"></div>
 
       <div class="toolbar-right">
-        <button @click="importByDialog" :disabled="loading || !hasRoot">Import Images</button>
-        <button @click="createFolder" :disabled="loading || !hasRoot">New Folder</button>
-        <button @click="openConfigPlaceholder" :disabled="loading">Image Config</button>
+        <button @click="importByDialog" :disabled="loading || !hasRoot">导入</button>
+        <button @click="createFolder" :disabled="loading || !hasRoot">创建新文件夹</button>
+        <button @click="openConfigPlaceholder" :disabled="loading">设置</button>
       </div>
     </div>
 
@@ -595,12 +596,12 @@ onBeforeUnmount(() => {
       </template>
     </div>
     <div class="breadcrumb-row" v-else>
-      <span class="path-hint">Please select an image root folder first.</span>
+      <span class="path-hint">选择一个根目录</span>
     </div>
 
     <div class="content" v-if="hasRoot">
       <div v-if="sortedItems.length === 0" class="empty-state">
-        <p>This folder is empty. Drag images here or use "Import Images".</p>
+        <p>空目录</p>
       </div>
 
       <div v-else class="item-grid">
@@ -629,8 +630,8 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="content empty-state" v-else>
-      <p>No image root folder has been configured.</p>
-      <button @click="chooseRootDirectory" :disabled="loading">Select Image Root</button>
+      <p>当前无根目录</p>
+      <button @click="chooseRootDirectory" :disabled="loading">选择根目录</button>
     </div>
   </div>
 </template>

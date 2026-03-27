@@ -11,7 +11,7 @@ import Subscript from '@tiptap/extension-subscript'
 import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '../extensions/image-freely/ImageFreely'
-import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, computed, onMounted, ref, watch, nextTick } from 'vue'
 import type { OpenOption, FSNode, SaveOption } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
@@ -28,7 +28,11 @@ const suppressDirtyTracking = ref(false)
 let autoSaveTimer: number | null = null
 const editor = useEditor({
   extensions: [
-    StarterKit,
+    StarterKit.configure({
+      link: {
+        openOnClick: false
+      }
+    }),
     Subscript,
     Superscript,
     TextAlign.configure({
@@ -127,6 +131,13 @@ const colorPickerRef = ref<HTMLElement | null>(null)
 const showEmojiPanel = ref(false)
 const activeEmojiGroup = ref<'ac1' | 'ac2'>('ac1')
 const emojiPickerRef = ref<HTMLElement | null>(null)
+const emojiPanelRef = ref<HTMLElement | null>(null)
+const showLinkPanel = ref(false)
+const linkPickerRef = ref<HTMLElement | null>(null)
+const linkPanelRef = ref<HTMLElement | null>(null)
+const linkUrl = ref('')
+const linkText = ref('')
+const PANEL_EDGE_GAP = 8
 
 type EmojiItem = {
   name: string
@@ -384,6 +395,7 @@ function IpcCallbackRegister() {
 onMounted(() => {
   IpcCallbackRegister()
   window.addEventListener('mousedown', handleGlobalMouseDown)
+  window.addEventListener('resize', handleViewportResize)
   startAutoSaveLoop()
   setSaveStatus('Editor ready')
 })
@@ -435,12 +447,95 @@ const toggleColorPalette = () => {
   showColorPalette.value = !showColorPalette.value
 }
 
+function clampPanelHorizontally(panelEl: HTMLElement): void {
+  panelEl.style.transform = 'translateX(0px)'
+
+  const rect = panelEl.getBoundingClientRect()
+  let deltaX = 0
+  const maxRight = window.innerWidth - PANEL_EDGE_GAP
+
+  if (rect.right > maxRight) {
+    deltaX -= rect.right - maxRight
+  }
+
+  const minLeft = PANEL_EDGE_GAP
+  if (rect.left + deltaX < minLeft) {
+    deltaX += minLeft - (rect.left + deltaX)
+  }
+
+  panelEl.style.transform = `translateX(${Math.round(deltaX)}px)`
+}
+
+async function clampOpenDropdowns(): Promise<void> {
+  await nextTick()
+
+  if (showLinkPanel.value && linkPanelRef.value) {
+    clampPanelHorizontally(linkPanelRef.value)
+  }
+
+  if (showEmojiPanel.value && emojiPanelRef.value) {
+    clampPanelHorizontally(emojiPanelRef.value)
+  }
+}
+
+const handleViewportResize = () => {
+  void clampOpenDropdowns()
+}
+
 const toggleEmojiPanel = () => {
   showEmojiPanel.value = !showEmojiPanel.value
+  if (showEmojiPanel.value) {
+    void clampOpenDropdowns()
+  }
 }
 
 const setEmojiGroup = (group: 'ac1' | 'ac2') => {
   activeEmojiGroup.value = group
+  if (showEmojiPanel.value) {
+    void clampOpenDropdowns()
+  }
+}
+
+const toggleLinkPanel = () => {
+  showLinkPanel.value = !showLinkPanel.value
+  if (showLinkPanel.value) {
+    linkUrl.value = ''
+    linkText.value = ''
+    void clampOpenDropdowns()
+  }
+}
+
+const cancelInsertLink = () => {
+  showLinkPanel.value = false
+  linkUrl.value = ''
+  linkText.value = ''
+}
+
+function normalizeHref(raw: string): string {
+  const value = raw.trim()
+  if (!value) return ''
+  if (/^[a-zA-Z][a-zA-Z\d+\-.]*:/.test(value)) return value
+  return `https://${value}`
+}
+
+const confirmInsertLink = () => {
+  if (!editor.value) return
+
+  const href = normalizeHref(linkUrl.value)
+  if (!href) return
+
+  const text = linkText.value.trim() || href
+  const insertFrom = editor.value.state.selection.from
+
+  editor.value
+    .chain()
+    .focus()
+    .insertContent(text)
+    .setTextSelection({ from: insertFrom, to: insertFrom + text.length })
+    .setLink({ href })
+    .run()
+
+  cancelInsertLink()
 }
 
 const handleGlobalMouseDown = (event: MouseEvent) => {
@@ -453,6 +548,10 @@ const handleGlobalMouseDown = (event: MouseEvent) => {
 
   if (showEmojiPanel.value && emojiPickerRef.value && !emojiPickerRef.value.contains(target)) {
     showEmojiPanel.value = false
+  }
+
+  if (showLinkPanel.value && linkPickerRef.value && !linkPickerRef.value.contains(target)) {
+    showLinkPanel.value = false
   }
 }
 
@@ -508,6 +607,7 @@ watch(editor, (newInstance) => {
 
 onBeforeUnmount(() => {
   window.removeEventListener('mousedown', handleGlobalMouseDown)
+  window.removeEventListener('resize', handleViewportResize)
   if (autoSaveTimer !== null) {
     window.clearInterval(autoSaveTimer)
     autoSaveTimer = null
@@ -685,24 +785,38 @@ onBeforeUnmount(() => {
       </div>
 
       <!-- 折叠 -->
-      <div class="toolbar-group">
+      <div class="toolbar-group insert-group insert-group-start">
         <button @click="insertDetails" title="插入折叠块">
           &#128194;
         </button>
       </div>
 
       <!-- 图片 -->
-      <div class="toolbar-group">
+      <div class="toolbar-group insert-group insert-group-mid">
         <button @click="insertImage" title="插入图片">
           &#128444;
         </button>
       </div>
-
+      <div class="toolbar-group link-group insert-group insert-group-end" ref="linkPickerRef">
+        <button type="button" @click="toggleLinkPanel" :class="{ active: editor.isActive('link') }" title="插入链接">
+          &#128279;
+        </button>
+        <div v-show="showLinkPanel" ref="linkPanelRef" class="link-panel">
+          <input v-model="linkUrl" class="link-input" type="text" placeholder="URL (https://...)"
+            @keydown.enter.prevent="confirmInsertLink" />
+          <input v-model="linkText" class="link-input" type="text" placeholder="Display text"
+            @keydown.enter.prevent="confirmInsertLink" />
+          <div class="link-actions">
+            <button type="button" class="link-btn" @click="confirmInsertLink">Insert</button>
+            <button type="button" class="link-btn" @click="cancelInsertLink">Cancel</button>
+          </div>
+        </div>
+      </div>
       <div class="toolbar-group emoji-group" ref="emojiPickerRef">
-        <button type="button" @click="toggleEmojiPanel" title="Insert Emoji">
+        <button type="button" @click="toggleEmojiPanel" title="插入表情">
           &#128578;
         </button>
-        <div v-show="showEmojiPanel" class="emoji-panel">
+        <div v-show="showEmojiPanel" ref="emojiPanelRef" class="emoji-panel">
           <div class="emoji-tabs">
             <button type="button" :class="{ active: activeEmojiGroup === 'ac1' }" @click="setEmojiGroup('ac1')">
               ac1
@@ -850,6 +964,63 @@ onBeforeUnmount(() => {
   outline-offset: 1px;
 }
 
+.insert-group {
+  border-right: none;
+  padding-right: 0;
+}
+
+.insert-group-start {
+  border-left: 1px solid transparent;
+}
+
+.insert-group-end {
+  border-right: 1px solid #ddd;
+  padding-right: 8px;
+}
+
+.link-group {
+  position: relative;
+}
+
+.link-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 24;
+  width: min(260px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15);
+  transform: translateX(0);
+}
+
+.link-input {
+  width: 100%;
+  height: 28px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  border: 1px solid #c7ced9;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.link-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.link-btn {
+  min-width: 64px;
+  height: 28px;
+}
+
 .emoji-group {
   position: relative;
 }
@@ -860,7 +1031,8 @@ onBeforeUnmount(() => {
   right: 0;
   left: auto;
   z-index: 24;
-  width: min(320px, calc(100vw - 32px));
+  width: min(320px, calc(100vw - 16px));
+  max-width: calc(100vw - 16px);
   max-height: min(240px, calc(100vh - 180px));
   display: flex;
   flex-direction: column;
@@ -869,6 +1041,7 @@ onBeforeUnmount(() => {
   background: #fff;
   box-shadow: 0 8px 18px rgba(0, 0, 0, 0.15);
   overflow: hidden;
+  transform: translateX(0);
 }
 
 .emoji-tabs {

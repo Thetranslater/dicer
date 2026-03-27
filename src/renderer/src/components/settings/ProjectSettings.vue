@@ -4,6 +4,7 @@ import { onMounted, ref } from 'vue'
 type ProjectModuleConfig = {
   root?: string
   name?: string
+  useTrueRandom?: boolean
 }
 
 type EditorModuleConfig = {
@@ -26,15 +27,11 @@ const fontSizes = [
 
 const projectConfig = ref<ProjectModuleConfig | null>(null)
 const baseFontSize = ref('16px')
+const useTrueRandom = ref(true)
 const loading = ref(false)
 const saving = ref(false)
 const errorMessage = ref('')
 const infoMessage = ref('')
-
-function normalizePath(path?: string): string {
-  if (!path) return ''
-  return path.replace(/\\/g, '/')
-}
 
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
@@ -56,6 +53,10 @@ function normalizeBaseFontSizeValue(value: unknown): string {
   return fontSizes.some((item) => item.value === candidate) ? candidate : '16px'
 }
 
+function normalizeUseTrueRandom(value: unknown): boolean {
+  return typeof value === 'boolean' ? value : true
+}
+
 function toEditorModuleConfig(value: unknown): EditorModuleConfig {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return {}
   return { ...(value as EditorModuleConfig) }
@@ -72,6 +73,7 @@ async function loadProjectConfig(): Promise<void> {
     ])
 
     projectConfig.value = (project ?? null) as ProjectModuleConfig | null
+    useTrueRandom.value = normalizeUseTrueRandom((project as ProjectModuleConfig | null)?.useTrueRandom)
     const editorConfig = toEditorModuleConfig(editor)
     baseFontSize.value = normalizeBaseFontSizeValue(editorConfig.baseFontSizePx)
   } catch (error) {
@@ -92,6 +94,20 @@ async function saveBaseFontSize(): Promise<void> {
 
     await window.api.cfg.set('editor', editorConfig)
     infoMessage.value = `Default base font size saved: ${editorConfig.baseFontSizePx}px`
+  } catch (error) {
+    errorMessage.value = toErrorMessage(error)
+  } finally {
+    saving.value = false
+  }
+}
+
+async function saveRandomPreference(): Promise<void> {
+  saving.value = true
+  errorMessage.value = ''
+  infoMessage.value = ''
+  try {
+    await window.api.cfg.set('project', { useTrueRandom: useTrueRandom.value })
+    infoMessage.value = `Random mode saved: ${useTrueRandom.value ? 'True random' : 'Pseudo random'}`
   } catch (error) {
     errorMessage.value = toErrorMessage(error)
   } finally {
@@ -125,7 +141,7 @@ onMounted(() => {
       <div class="value">{{ projectConfig.name }}</div>
 
       <div class="label">Project Path</div>
-      <div class="value">{{ normalizePath(projectConfig.root) }}</div>
+      <div class="value">{{ projectConfig.root }}</div>
     </div>
 
     <div class="setting-row">
@@ -136,6 +152,14 @@ onMounted(() => {
         </option>
       </select>
       <button @click="saveBaseFontSize" :disabled="loading || saving">Save</button>
+    </div>
+
+    <div class="setting-row-inline">
+      <label class="checkbox-label" for="use-true-random">
+        <input id="use-true-random" type="checkbox" v-model="useTrueRandom" :disabled="loading || saving" />
+        Use True Random (rdrand-lite)
+      </label>
+      <button @click="saveRandomPreference" :disabled="loading || saving">Save</button>
     </div>
   </section>
 </template>
@@ -156,7 +180,8 @@ onMounted(() => {
 }
 
 .action-row button,
-.setting-row button {
+.setting-row button,
+.setting-row-inline button {
   height: 32px;
   border: 1px solid #d0d7de;
   border-radius: 6px;
@@ -166,7 +191,8 @@ onMounted(() => {
 }
 
 .action-row button:disabled,
-.setting-row button:disabled {
+.setting-row button:disabled,
+.setting-row-inline button:disabled {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -179,6 +205,13 @@ onMounted(() => {
   max-width: 420px;
 }
 
+.setting-row-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 420px;
+}
+
 .setting-row select {
   height: 32px;
   border: 1px solid #d0d7de;
@@ -186,6 +219,20 @@ onMounted(() => {
   padding: 0 8px;
   font-size: 13px;
   background: #fff;
+}
+
+.checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #24292f;
+  font-size: 13px;
+}
+
+.checkbox-label input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
 }
 
 .placeholder {

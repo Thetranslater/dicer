@@ -2,25 +2,31 @@ import { ipcMain } from 'electron'
 
 import { join } from 'path'
 import { Random } from 'random'
+import { configManager } from './configManager'
+import { config } from 'process'
 
 
 type RdrandLiteModule = {
     rdSeed32: () => number
     normalizeUint32: (value: number) => number
 }
+
+function resolveUseTrueRandomFromConfig(): boolean {
+    const projectConfig = configManager.get('project') as Record<string, unknown> | undefined
+    if (projectConfig && typeof projectConfig.useTrueRandom === 'boolean') {
+        return projectConfig.useTrueRandom
+    }
+    return true
+}
 class RandomGenerator {
     static RNG?: RandomGenerator = undefined
     static mod = RandomGenerator._loadRdrandLite()
 
-    private _generator?: Random
-    private _seed?: string | number
-    private _is_pseudo: boolean
-    constructor(pseudo?: boolean, seed?: string | number) {
-        this._is_pseudo = pseudo ?? true
-        if (this._is_pseudo) {
-            this._seed = seed ?? RandomGenerator._rdSeed32Safe()
-            this._generator = new Random(this._seed)
-        }
+    private _generator: Random
+    private _seed: string | number
+    constructor(seed?: string | number) {
+        this._seed = seed ?? RandomGenerator._rdSeed32Safe()
+        this._generator = new Random(this._seed)
     }
     private static _loadRdrandLite(): RdrandLiteModule | null {
         const requireFunc = eval('require') as NodeJS.Require
@@ -53,31 +59,28 @@ class RandomGenerator {
         return (value >>> 0) / 0xFFFFFFFF
     }
     gen(pseudo?: boolean) {
-        if (pseudo) return RandomGenerator._normalizeUint32Safe(RandomGenerator._rdSeed32Safe())
-        if (this._is_pseudo) {
-            return this._generator!.float()
-        }
-        return RandomGenerator._normalizeUint32Safe(RandomGenerator._rdSeed32Safe())
+        if (!pseudo) return RandomGenerator._normalizeUint32Safe(RandomGenerator._rdSeed32Safe())
+        return this._generator.float()
     }
     setseed(seed: string | number) {
-        this._is_pseudo = true
         this._seed = seed
         this._generator = new Random(seed)
     }
-    seed(): string | number | undefined {
-        if (this._is_pseudo) return this._seed
-        return undefined
+    seed(): string | number {
+        return this._seed
     }
 }
 
 export const DRandom = {
     resgisterIPC() {
-        ipcMain.handle('sys:rand', (_e, pseudo?: boolean, seed?: string) => {
-            if (seed) {
+        ipcMain.handle('sys:rand', (_e, _pseudo?: boolean, seed?: string | number) => {
+            if (seed !== undefined && seed !== null) {
                 if (RandomGenerator.RNG) RandomGenerator.RNG.setseed(seed)
             }
-            if (!RandomGenerator.RNG) RandomGenerator.RNG = new RandomGenerator(pseudo, seed)
-            return RandomGenerator.RNG.gen(pseudo)
+            if (!RandomGenerator.RNG) RandomGenerator.RNG = new RandomGenerator(seed)
+            const config = configManager.get('project')
+            let usePseudo = config && config.useTrueRandom ? !config.useTrueRandom : true
+            return RandomGenerator.RNG.gen(usePseudo)
         })
     }
 }

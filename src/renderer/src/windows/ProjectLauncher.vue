@@ -9,10 +9,6 @@ const loading = ref(false)
 const errorMessage = ref('')
 const infoMessage = ref('')
 
-function normalizePath(path: string): string {
-  return path.replace(/\\/g, '/')
-}
-
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
@@ -50,7 +46,7 @@ async function chooseDirectory(_exist: boolean): Promise<string | null> {
 
   const pathValue = fsnodes[0].path
   if (typeof pathValue !== 'string' || pathValue.length === 0) return null
-  return normalizePath(pathValue)
+  return window.api.path.normalize(pathValue)
 }
 
 async function readExistingProjectConfig(projectDir: string): Promise<any> {
@@ -137,11 +133,12 @@ async function createProject(): Promise<void> {
 
     const projectConfig = {
       root: projectDir,
-      name: safeName
+      name: safeName,
+      useTrueRandom: false
     }
 
     const saveConfigOptions: SaveOption = {
-      path: [`${normalizePath(projectDir)}/project.config.json`],
+      path: [`${projectDir}/project.config.json`],
     }
 
     await window.api.fs.save(JSON.stringify(projectConfig, null, 2), saveConfigOptions)
@@ -159,18 +156,18 @@ async function createProject(): Promise<void> {
 <template>
   <div class="launcher-window">
     <section class="launcher-card">
-      <h1>Project Launcher</h1>
+      <h1>启动</h1>
       <p class="hint">
-        Choose an existing project or create a new project.
+        选择一个已有项目或创建新项目
       </p>
 
       <div class="path-row">
-        <label>Project Name</label>
+        <label>项目名称</label>
         <input v-model="projectName" :disabled="loading" placeholder="default" />
       </div>
 
       <div class="path-row">
-        <label>Project Root</label>
+        <label>项目目录</label>
         <div class="input-shell">
           <input class="with-action" :value="selectedPath" readonly placeholder="No project selected" />
           <button class="inline-pick-button" @click="chooseCreateRootPath" :disabled="loading"
@@ -181,8 +178,8 @@ async function createProject(): Promise<void> {
       </div>
 
       <div class="actions">
-        <button @click="openExistingProject" :disabled="loading">Open Existing</button>
-        <button @click="createProject" :disabled="loading">Create New</button>
+        <button @click="openExistingProject" :disabled="loading">打开</button>
+        <button @click="createProject" :disabled="loading">创建</button>
       </div>
 
       <p v-if="errorMessage" class="error-text">{{ errorMessage }}</p>

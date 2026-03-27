@@ -33,7 +33,6 @@ export interface IAPI {
   imagesGetAttachmentMappings: () => Promise<ImageAttachmentMappingsResult>
   imagesSaveAttachmentMappings: (mappings: Record<string, string>) => Promise<{ savedCount: number }>
   imagesCreateFolder: (parentPath: string, folderName?: string) => Promise<string>
-  imagesRename: (targetPath: string, nextName: string) => Promise<string>
   imagesImportDialog: (targetDirectory: string) => Promise<string[]>
   imagesImportFiles: (targetDirectory: string, sourceFilePaths: string[]) => Promise<string[]>
 
@@ -44,6 +43,7 @@ export interface IAPI {
     mkdir: (path, option?) => any
     rm: (paths: string[], option?) => any
     mv: (source, target, option?) => any
+    rnm: (target, next, option?) => any
   }
   path: {
     normalize: (path) => any
@@ -67,6 +67,3 @@ declare global {
     api: IAPI
   }
 }
-
-export { }
-

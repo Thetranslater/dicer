@@ -121,14 +121,14 @@ app.whenReady().then(() => {
       submenu: [
         {
           label: '新建...',
-          accelerator: 'CmdOrCtrl+N',
+          //accelerator: 'CmdOrCtrl+N',
           click: () => {
             windowManager.get('editor')?.webContents.send('menu-file-new')
           }
         },
         {
           label: '打开...',
-          accelerator: 'CmdOrCtrl+O',
+          //accelerator: 'CmdOrCtrl+O',
           click: async () => {
             try {
               const option: OpenOption = {
@@ -153,12 +153,12 @@ app.whenReady().then(() => {
         { type: 'separator' },
         {
           label: '保存',
-          accelerator: 'CmdOrCtrl+S',
+          //accelerator: 'CmdOrCtrl+S',
           click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-save')
         },
         {
           label: '另存为..',
-          accelerator: 'CmdOrCtrl+Shift+S',
+          //accelerator: 'CmdOrCtrl+Shift+S',
           click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-saveas')
         },
         { type: 'separator' },
@@ -170,7 +170,7 @@ app.whenReady().then(() => {
       submenu: [
         {
           label: '打开图像管理窗口',
-          accelerator: 'CmdOrCtrl+Shift+I',
+          //accelerator: 'CmdOrCtrl+Shift+I',
           click: () => {
             windowManager.createWindow('images')
           }
@@ -178,11 +178,11 @@ app.whenReady().then(() => {
       ]
     },
     {
-      label: 'Settings',
+      label: '设置',
       submenu: [
         {
-          label: 'Open Settings',
-          accelerator: 'CmdOrCtrl+,',
+          label: '打开设置窗口',
+          //accelerator: 'CmdOrCtrl+,',
           click: () => {
             windowManager.createWindow('settings')
           }
