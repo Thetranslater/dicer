@@ -11,45 +11,13 @@ type ImageAttachmentMappingsResult = {
   items: ImageAttachmentMappingItem[]
 }
 
-type ProjectConfig = {
-  [module: string]: any
-}
-
 // Custom APIs for renderer
 const api = {
-  // core
-  saveFileChannel: (callback: (details?) => void) => {
-    ipcRenderer.on('sys:savefilec', (_event, details) => callback(details))
-  },
-  saveFileSignal: (content: string | Buffer, options?) =>
-    ipcRenderer.invoke('sys:savefile', content, options),
-  /**
-   * 规范化一个路径，比如将D:\folder\..转成D:/
-   */
-  normalizePath: (path:string) : Promise<string>=>ipcRenderer.invoke('sys:normalizepath', path),
-  /**
-   * 获得父路径，当参数是根目录时(D:/或D:)返回NULL
-   */
-  parentPath: (path : string) : Promise<string | null> => ipcRenderer.invoke('sys:parentpath', path),
   /**
    * [0,1)随机数生成，可重新配置
    */
-  rand: (pseudo?:boolean, seed?: string | number)=>ipcRenderer.invoke('sys:rand', pseudo, seed),
+  rand: (pseudo?: boolean, seed?: string | number) => ipcRenderer.invoke('sys:rand', pseudo, seed),
 
-  //core:config
-  /**
-   * 根据模块名获取对应config。如果输入不存在的模块名或该模块尚未配置，则返回undefined
-   */
-  getConfig: (moduleName: string): Promise<any> => ipcRenderer.invoke('sys:getconfig', moduleName),
-  loadProjectConfig: (configJson: Record<string, any>): Promise<ProjectConfig> =>
-    ipcRenderer.invoke('sys:loadprojectconfig', configJson),
-  setConfig: (moduleName: string, configJson: unknown): Promise<boolean> =>
-    ipcRenderer.invoke('sys:setconfig', moduleName, configJson),
-  deleteConfig: (moduleName: string): Promise<boolean> =>
-    ipcRenderer.invoke('sys:deleteconfig', moduleName),
-  onConfig: (callback: (projectConfig: ProjectConfig) => void) => {
-    ipcRenderer.on('sys:onconfig', (_event, projectConfig)=>callback(projectConfig))
-  },
   projectIsLoaded: (): Promise<boolean> => ipcRenderer.invoke('project:is-loaded'),
   projectReady: (): Promise<void> => ipcRenderer.invoke('project:ready'),
   openSettingsWindow: (route?: string): Promise<void> => ipcRenderer.invoke('window:open-settings', route),
@@ -60,7 +28,7 @@ const api = {
   },
 
   // Image manager module (module:function)
-  imagesGetFilePath: (file : File) : string => webUtils.getPathForFile(file),
+  imagesGetFilePath: (file: File): string => webUtils.getPathForFile(file),
   imagesSelectRoot: (): Promise<string | null> => ipcRenderer.invoke('images:select-root'),
   imagesGetAttachmentMappings: (): Promise<ImageAttachmentMappingsResult> =>
     ipcRenderer.invoke('images:get-attachment-mappings'),
@@ -76,12 +44,30 @@ const api = {
     ipcRenderer.invoke('images:import-files', targetDirectory, sourceFilePaths),
 
   //TODO
-  on: (callback: (ch: string, ...args) => void) => ipcRenderer.on('BUS_CHANNEL', (event, ch, ...args)=>callback(ch, event, args)),
+  on: (callback: (ch: string, ...args) => void) => ipcRenderer.on('BUS_CHANNEL', (event, ch, ...args) => callback(ch, event, args)),
   fs: {
-    open: (option?)=>ipcRenderer.invoke('fs:open', option),
+    open: (option?) => ipcRenderer.invoke('fs:open', option),
     save: (content: any[], option?) => ipcRenderer.invoke('fs:save', content, option),
     mv: (source: string, target: string, option?) => ipcRenderer.invoke('fs:mv', source, target, option),
     rm: (paths: string[], option?) => ipcRenderer.invoke('fs:rm', paths, option)
+  },
+  path: {
+    /**
+    * 规范化一个路径，比如将D:\folder\..转成D:/
+    */
+    normalize: (path: string): Promise<string> => ipcRenderer.invoke('path:normalize', path),
+    /**
+    * 获得父路径，当参数是根目录时(D:/或D:)返回NULL
+    */
+    parent: (path: string): Promise<string | null> => ipcRenderer.invoke('path:parent', path),
+  },
+  cfg: {
+    /**
+    * 根据模块名获取对应config。如果输入不存在的模块名或该模块尚未配置，则返回undefined
+    */
+    get: (module: string): Promise<any> => ipcRenderer.invoke('cfg:get', module),
+    set: (module: string, configJson: unknown): Promise<boolean> => ipcRenderer.invoke('cfg:set', module, configJson),
+    initialize: (config: Record<string, any>) => ipcRenderer.invoke('cfg:initialize', config)
   }
 }
 

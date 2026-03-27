@@ -73,7 +73,7 @@ async function loadDirectory(path: string): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const normalizedPath = await window.api.normalizePath(path)
+    const normalizedPath = await window.api.path.normalize(path)
     const option: OpenOption = {
       fileOption: {
         isLoad: false,
@@ -227,7 +227,7 @@ async function chooseRootDirectory(): Promise<void> {
       rootPath: selectedPath,
       attachmentMappings: {}
     }
-    const savedResult = await window.api.setConfig(IMAGESMANAGER_MODULE_NAME, config)
+    const savedResult = await window.api.cfg.set(IMAGESMANAGER_MODULE_NAME, config)
     if (savedResult) {
       await loadDirectory(selectedPath)
       statusMessage.value = `Root updated: ${selectedPath}`
@@ -423,7 +423,7 @@ async function initialize(): Promise<void> {
   loading.value = true
   errorMessage.value = ''
   try {
-    const config = await window.api.getConfig(IMAGESMANAGER_MODULE_NAME)
+    const config = await window.api.cfg.get(IMAGESMANAGER_MODULE_NAME)
     if (config?.rootPath) {
       rootPath.value = config.rootPath
       await loadDirectory(config.rootPath)
@@ -555,7 +555,7 @@ async function openConfigPlaceholder(): Promise<void> {
 
 watch(currentPath, async (newValue) => {
   console.log(newValue)
-  parentPath.value = await window.api.parentPath(newValue)
+  parentPath.value = await window.api.path.parent(newValue)
 })
 
 onMounted(() => {

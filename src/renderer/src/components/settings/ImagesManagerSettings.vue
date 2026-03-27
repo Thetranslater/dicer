@@ -51,7 +51,7 @@ async function loadConfig(): Promise<void> {
   errorMessage.value = ''
   try {
     const result = await window.api.imagesGetAttachmentMappings()
-    rootPath.value = result.rootPath ? await window.api.normalizePath(result.rootPath) : null
+    rootPath.value = result.rootPath ? await window.api.path.normalize(result.rootPath) : null
     mappings.value = result.items.map((item) => ({
       imagePath: item.imagePath,
       attachmentUrl: item.attachmentUrl
@@ -96,7 +96,7 @@ async function chooseRootDirectory() {
   if (!selectedPath) return
 
   try {
-    const normalized = await window.api.normalizePath(selectedPath)
+    const normalized = await window.api.path.normalize(selectedPath)
     if (normalized !== rootPath.value) {
       rootPath.value = normalized
       markDirty()
@@ -111,7 +111,7 @@ async function persistConfigOnExit(): Promise<void> {
 
   const payload = buildConfigPayload()
   try {
-    await window.api.setConfig('image', payload)
+    await window.api.cfg.set('image', payload)
     isDirty.value = false
     console.log('[ImagesManagerSettings] config saved on unmount', payload)
   } catch (error) {

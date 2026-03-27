@@ -1,14 +1,15 @@
-import { app, BrowserWindow, ipcMain, protocol} from 'electron'
-import {updateElectronApp} from 'update-electron-app'
-import { electronApp, optimizer} from '@electron-toolkit/utils'
+import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+import { updateElectronApp } from 'update-electron-app'
+import { electronApp, optimizer } from '@electron-toolkit/utils'
 // import { net } from 'electron'
 // import { URL } from 'url'
 
-import { windowManager} from './windowManager'
-import { fsOpen, registerCoreIpcHandlers } from './core'
+import { windowManager } from './windowManager'
+import { DFS } from './fs'
+import { registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
 import type { OpenFileOptions, OpenOption } from '../renderer/src/utils/fileService'
-import { registerConfigIpcHandlers } from './configManager'
+import { registerConfigManagerIpcHandlers } from './configManager'
 
 
 
@@ -20,14 +21,14 @@ function registerLocalProtocol(): void {
     // 还原 Windows 盘符中被浏览器去掉的冒号
     // 例如 C/User/... -> C:/Users/...
     filePath = filePath.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
-    const options : OpenFileOptions = {
-      fileOption:{
+    const options: OpenFileOptions = {
+      fileOption: {
         path: [filePath],
         isLoad: true,
-        dialogfilters: [{name : 'img', extensions : ['jpg', 'png', 'jpeg', 'gif', 'bmp', 'svg','tif']}]
+        dialogfilters: [{ name: 'img', extensions: ['jpg', 'png', 'jpeg', 'gif', 'bmp', 'svg', 'tif'] }]
       }
     }
-    const result = await fsOpen(options)
+    const result = await DFS.fsOpen(options)
     return new Response(result[0].data as any)
   })
 }
@@ -92,11 +93,11 @@ updateElectronApp()
 
 protocol.registerSchemesAsPrivileged([
   {
-    scheme : 'app',
-    privileges:{
-      standard : true,
-      secure : true,
-      supportFetchAPI : true
+    scheme: 'app',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true
     }
   }
 ])
@@ -108,9 +109,10 @@ app.whenReady().then(() => {
 
   // 注册本地文件协议
   registerLocalProtocol()
+
   registerCoreIpcHandlers()
   registerImageManagerIpcHandlers()
-  registerConfigIpcHandlers()
+  registerConfigManagerIpcHandlers()
 
   //Menu template
   const template: Electron.MenuItemConstructorOptions[] = [
@@ -128,24 +130,24 @@ app.whenReady().then(() => {
           label: '打开...',
           accelerator: 'CmdOrCtrl+O',
           click: async () => {
-              try{
-                const option : OpenOption = {
-                  isMultiselection: false,
-                  dialogOpenType: 'file',
-                  fileOption : {
-                    isLoad: true,
-                    dialogfilters: [{name: 'HTML', extensions: ['html', 'htm']}, {name: 'JSON', extensions: ['json']}]
-                  }
+            try {
+              const option: OpenOption = {
+                isMultiselection: false,
+                dialogOpenType: 'file',
+                fileOption: {
+                  isLoad: true,
+                  dialogfilters: [{ name: 'HTML', extensions: ['html', 'htm'] }, { name: 'JSON', extensions: ['json'] }]
                 }
+              }
 
-                const result = fsOpen(option)
-                if (result.length === 1){
-                  windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', result)
-                }
+              const result = DFS.fsOpen(option)
+              if (result.length === 1) {
+                windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', result)
               }
-              catch (error){
-                console.error('Error read file:', error)
-              }
+            }
+            catch (error) {
+              console.error('Error read file:', error)
+            }
           }
         },
         { type: 'separator' },
@@ -205,7 +207,7 @@ app.whenReady().then(() => {
 
   windowManager.createWindow('launcher')
   windowManager.setMenu(template)
-    
+
 
   app.on('activate', function () {
     // On macOS it's common to re-create a window in the app when the

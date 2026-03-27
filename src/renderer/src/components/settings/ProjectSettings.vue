@@ -67,8 +67,8 @@ async function loadProjectConfig(): Promise<void> {
   infoMessage.value = ''
   try {
     const [project, editor] = await Promise.all([
-      window.api.getConfig('project'),
-      window.api.getConfig('editor')
+      window.api.cfg.get('project'),
+      window.api.cfg.get('editor')
     ])
 
     projectConfig.value = (project ?? null) as ProjectModuleConfig | null
@@ -86,11 +86,11 @@ async function saveBaseFontSize(): Promise<void> {
   errorMessage.value = ''
   infoMessage.value = ''
   try {
-    const current = await window.api.getConfig('editor')
+    const current = await window.api.cfg.get('editor')
     const editorConfig = toEditorModuleConfig(current)
     editorConfig.baseFontSizePx = parsePx(baseFontSize.value)
 
-    await window.api.setConfig('editor', editorConfig)
+    await window.api.cfg.set('editor', editorConfig)
     infoMessage.value = `Default base font size saved: ${editorConfig.baseFontSizePx}px`
   } catch (error) {
     errorMessage.value = toErrorMessage(error)

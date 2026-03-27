@@ -12,7 +12,7 @@ import Superscript from '@tiptap/extension-superscript'
 import { Details, DetailsContent, DetailsSummary } from '@tiptap/extension-details'
 import Image from '../extensions/image-freely/ImageFreely'
 import { onBeforeUnmount, computed, onMounted, ref, watch } from 'vue'
-import type { OpenOption, SaveFileDetails, SaveFileOptions, FSNode, SaveOption } from '../utils/fileService'
+import type { OpenOption, FSNode, SaveOption } from '../utils/fileService'
 import { useEditorStore } from '../composables/useEditorStore'
 import Dicer from './Dicer.vue'
 import { htmlToNgaBBS } from '../utils/htmlToNgaBBS'
@@ -299,24 +299,17 @@ function startAutoSaveLoop(): void {
 const handleEditorSaveAs = async () => {
   if (!editor.value) return
 
-  const options: SaveFileOptions = {
-    broadcastInfo: 'menu-savefileas',
-    isBinary: false,
-    encoding: 'utf-8',
+  const option: SaveOption = {
     dialogfilters: [
       { name: 'NGA BBS', extensions: ['bbs'] }
-    ],
-    dev: {
-      source: 'menu-saveas',
-      message: '菜单另存为，返回编辑器保存的bbs code内容'
-    }
+    ]
   }
 
   const html = editor.value.getHTML()
 
   let imageConfig: ImageExportConfig | undefined
   try {
-    const rawConfig = await window.api.getConfig('image')
+    const rawConfig = await window.api.cfg.get('image')
     imageConfig = normalizeImageExportConfig(rawConfig)
   } catch (error) {
     console.warn('[Editor] failed to read image config, fallback to original image src', error)
@@ -324,19 +317,15 @@ const handleEditorSaveAs = async () => {
 
   let editorConfig: EditorExportConfig | undefined
   try {
-    const rawConfig = await window.api.getConfig('editor')
+    const rawConfig = await window.api.cfg.get('editor')
     editorConfig = normalizeEditorExportConfig(rawConfig)
   } catch (error) {
     console.warn('[Editor] failed to read editor config, fallback to default base font size', error)
   }
 
   const bbs = htmlToNgaBBS(html, { imageConfig, editorConfig })
-  const saveDetails = await window.api.saveFileSignal(bbs, options) as SaveFileDetails
-  if (saveDetails?.isDialogCanceled) {
-    setSaveStatus('Save as BBS canceled')
-    return
-  }
-  setSaveStatus('Saved as .bbs', { path: saveDetails?.savedPath ?? null })
+  const saveDetails = await window.api.fs.save(bbs, option)
+  setSaveStatus('Saved as .bbs', { path: saveDetails[0] ?? null })
 }
 
 function IpcCallbackRegister() {

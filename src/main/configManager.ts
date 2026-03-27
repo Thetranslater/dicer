@@ -1,7 +1,7 @@
 import { mkdirSync, writeFileSync } from 'fs'
 import { dirname, join, resolve } from 'path'
 
-import { normalizePath } from './core'
+import { DPath } from './path'
 import { ipcMain } from 'electron'
 import { broadcast } from './windowManager'
 
@@ -13,14 +13,14 @@ function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-const MODULE_NAMES = new Set(['project','editor','image','setting'])
+const MODULE_NAMES = new Set(['project', 'editor', 'image', 'setting'])
 
 class ConfigManager {
   private static instance: ConfigManager
   private config: ProjectConfig = {}
   private loaded = false
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): ConfigManager {
     if (!ConfigManager.instance) {
@@ -37,13 +37,13 @@ class ConfigManager {
   }
 
   private persistToDisk(): void {
-    const projectBase =(typeof this.config.root === 'string' && this.config.root.trim().length > 0? this.config.root: '')
+    const projectBase = (typeof this.config.root === 'string' && this.config.root.trim().length > 0 ? this.config.root : '')
 
     if (!projectBase) {
       throw new Error('project root path is not available')
     }
 
-    const filePath = normalizePath(join(resolve(projectBase), PROJECT_CONFIG_FILE))
+    const filePath = DPath.normalizePath(join(resolve(projectBase), PROJECT_CONFIG_FILE))
 
     mkdirSync(dirname(filePath), { recursive: true })
     writeFileSync(filePath, JSON.stringify(this.config, null, 2), 'utf-8')
@@ -79,13 +79,13 @@ class ConfigManager {
   }
 
   get(moduleName: string): any {
-    if(!MODULE_NAMES.has(moduleName)) return undefined
-    if (moduleName === 'project') return {root :this.config['root'], name : this.config['name']}
+    if (!MODULE_NAMES.has(moduleName)) return undefined
+    if (moduleName === 'project') return { root: this.config['root'], name: this.config['name'] }
     return this.config[moduleName]
   }
 
   set(moduleName: string, configJson: unknown): boolean {
-    if(!MODULE_NAMES.has(moduleName)) return false
+    if (!MODULE_NAMES.has(moduleName)) return false
     this.config[moduleName] = configJson
 
     this.loaded = true
@@ -109,14 +109,16 @@ class ConfigManager {
 }
 
 export const configManager = ConfigManager.getInstance()
-export function registerConfigIpcHandlers(){
-  ipcMain.handle('sys:getconfig', (_e, moduleName: string) : string | null => {
-    return configManager.get(moduleName)
-  })
-  
-  ipcMain.handle('sys:setconfig', (_e, moduleName: string, configJson: unknown) => {
+export function registerConfigManagerIpcHandlers() {
+  ipcMain.handle('cfg:get', (_e, moduleName: string): string | null => configManager.get(moduleName))
+  ipcMain.handle('cfg:set', (_e, moduleName: string, configJson: unknown) => {
     const result = configManager.set(moduleName, configJson)
     broadcast('sys:onconfig', configManager.getAll())
     return result
+  })
+  ipcMain.handle('cfg:initialize', (_e, configJson: Record<string, any>) => {
+    const projectConfig = configManager.load(configJson)
+    broadcast('config-notify', projectConfig)
+    return projectConfig
   })
 }

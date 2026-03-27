@@ -15,7 +15,7 @@ interface CreateWindowParams {
 }
 
 const MODULE_WINDOW_CONFIG: Record<string, BaseWindowOptions> = {
-  editor :{
+  editor: {
     width: 900,
     height: 670,
     title: '',
@@ -54,7 +54,7 @@ class WindowManager {
   private static instance: WindowManager
   private windows: Map<string, BrowserWindow | null> = new Map()
 
-  private constructor() {}
+  private constructor() { }
 
   static getInstance(): WindowManager {
     if (!WindowManager.instance) {
@@ -89,8 +89,8 @@ class WindowManager {
       this.close(type)
     }
   }
-  getAll() : BrowserWindow[] {
-    const windows : BrowserWindow[] = []
+  getAll(): BrowserWindow[] {
+    const windows: BrowserWindow[] = []
     for (const [_, window] of this.windows) {
       if (window && !window.isDestroyed()) {
         windows.push(window)
@@ -158,38 +158,38 @@ class WindowManager {
 
   createWindow(module: string, params: CreateWindowParams = {}): BrowserWindow {
     const { focusIfExists = true, overrides = {} } = params
-  
+
     if (focusIfExists) {
       const existingWindow = focusExistingWindow(module)
       if (existingWindow) {
         return existingWindow
       }
     }
-  
+
     const windowOptions: BaseWindowOptions = {
       ...MODULE_WINDOW_CONFIG[module],
       ...overrides
     }
-  
+
     const window = windowManager._createWindow(module, windowOptions)
     if (module !== 'editor' && process.platform !== 'darwin') {
       window.removeMenu()
       window.setMenuBarVisibility(false)
       window.setAutoHideMenuBar(true)
     }
-  
+
     return window
   }
-  setMenu(template){
+  setMenu(template) {
     const menu = Menu.buildFromTemplate(template as Electron.MenuItemConstructorOptions[])
     Menu.setApplicationMenu(menu)
   }
 }
 
-export function broadcast(channel : string, ...args){
+export function broadcast(channel: string, ...args) {
   const windows = windowManager.getAll()
   windows.forEach((meta) => {
-    meta.webContents.send(channel, ...args)
+    meta.webContents.send('BUS_CHANNEL', channel, ...args)
   })
 }
 

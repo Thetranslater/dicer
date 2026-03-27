@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import type { SaveFileOptions, OpenOption } from '@renderer/utils/fileService'
+import type { OpenOption, SaveOption } from '@renderer/utils/fileService'
 
 const selectedPath = ref('')
 const projectName = ref('default')
@@ -108,7 +108,7 @@ async function openExistingProject(): Promise<void> {
     createRootPath.value = ''
     selectedPath.value = existingConfig.root
     projectName.value = normalizeProjectName(existingConfig.name)
-    await window.api.loadProjectConfig(existingConfig)
+    await window.api.cfg.initialize(existingConfig)
     loading.value = false
     infoMessage.value = `Project "${projectName.value}" loaded.`
 
@@ -140,19 +140,12 @@ async function createProject(): Promise<void> {
       name: safeName
     }
 
-    const saveConfigOptions: SaveFileOptions = {
-      path: `${normalizePath(projectDir)}/project.config.json`,
-      broadcastInfo: 'launcher-firstsaveconfig',
-      isBinary: false,
-      encoding: 'utf-8',
-      dev: {
-        source: 'launcher-create-project',
-        message: 'create project config'
-      }
+    const saveConfigOptions: SaveOption = {
+      path: [`${normalizePath(projectDir)}/project.config.json`],
     }
 
-    await window.api.saveFileSignal(JSON.stringify(projectConfig, null, 2), saveConfigOptions)
-    await window.api.loadProjectConfig(projectConfig)
+    await window.api.fs.save(JSON.stringify(projectConfig, null, 2), saveConfigOptions)
+    await window.api.cfg.initialize(projectConfig)
     infoMessage.value = `Project "${safeName}" created.`
     await window.api.projectReady()
   } catch (error) {
