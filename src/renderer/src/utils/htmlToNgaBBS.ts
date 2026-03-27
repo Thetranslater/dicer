@@ -1,4 +1,11 @@
-﻿function normalizeText(text: string): string {
+﻿const AC1_EMOJICODE = [
+  'blink', 'goodjob','上','中枪','偷笑','冷','凌乱','反对','吓','吻','呆','咦','哦','哭','哭1','哭笑','哼','喘','喷','嘲笑','嘲笑1','囧','委屈','心','忧伤','怒','怕','惊','愁','抓狂','抠鼻','擦汗','无语','晕','汗','瞎','羞','羡慕','花痴','茶','衰','计划通','赞同','闪光','黑枪'
+]
+const AC2_EMOJICODE = [
+  'goodjob','偷笑','怒','欸嘿','笑','那个...','哦嗬嗬嗬','舔','有何贵干','病娇','lucky','鬼脸','大哭','冷','哭','妮可妮可妮','惊','poi','恨','囧2','中枪','囧','你看看你','yes','doge','自戳双目','偷吃','冷笑','壁咚','不活了','不明觉厉','jojo立','jojo立2','jojo立3','jojo立5','jojo立方4','威吓','你已经死了','异议','认真','你这种人...','是在下输了','抢镜头','你为猴这么','干杯','干杯2'
+]
+
+function normalizeText(text: string): string {
   return text.replace(/\u00a0/g, ' ')
 }
 
@@ -56,10 +63,10 @@ function toNgaFontSizeTag(value: string, options?: HtmlToNgaBBSOptions): string 
   return `size=${percent}%`
 }
 
-function parseAppImagePath(src: string): string | null {
-  if (!src.startsWith('app://')) return null
-
-  const raw = src.slice('app://'.length)
+function parseAppImagePath(src: string): string {
+  let raw = src
+  if (src.startsWith('app://'))
+    raw = src.slice('app://'.length)
   try {
     return normalizePath(decodeURIComponent(raw))
   } catch {
@@ -94,6 +101,39 @@ function resolveImageSource(src: string, options?: HtmlToNgaBBSOptions): string 
 
   const trimmed = mapped.trim()
   return trimmed || src
+}
+
+function getImageFileIndex(src: string): number | null {
+  const path = parseAppImagePath(src)
+  const file = path.split('/').pop() ?? ''
+  const stem = file.replace(/\.[^.]+$/, '')
+  if (!/^\d+$/.test(stem)) return null
+
+  const index = Number(stem)
+  return Number.isInteger(index) ? index : null
+}
+
+function getEmojiSetFromSrc(src: string): 'ac' | 'a2' | null {
+  const path = parseAppImagePath(src)
+  if (path.includes('/emoji/ac1/') || path.includes('/ac1/')) return 'ac'
+  if (path.includes('/emoji/ac2/') || path.includes('/ac2/')) return 'a2'
+  return null
+}
+
+function resolveEmojiTag(src: string): string | null {
+  const set = getEmojiSetFromSrc(src)
+  const index = getImageFileIndex(src)
+  if (!set || index === null) return null
+
+  if (set === 'ac') {
+    if (index < 0 || index >= AC1_EMOJICODE.length) return null
+    const code = AC1_EMOJICODE[index]
+    return code ? `[s:ac:${code}]` : null
+  }
+
+  if (index < 0 || index >= AC2_EMOJICODE.length) return null
+  const code = AC2_EMOJICODE[index]
+  return code ? `[s:a2:${code}]` : null
 }
 
 function applyInlineStyle(el: HTMLElement, content: string, options?: HtmlToNgaBBSOptions): string {
@@ -139,7 +179,7 @@ function serializeList(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
     .join('')
 
   if (!items) return ''
-  return `[list]\n${items}[/list]\n\n`
+  return `[list]\n${items}[/list]\n`
 }
 
 function serializeTable(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
@@ -220,6 +260,8 @@ function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
     }
     case 'img': {
       const src = el.getAttribute('src') || ''
+      const emojiTag = resolveEmojiTag(src)
+      if (emojiTag) return emojiTag
       const resolved = resolveImageSource(src, options)
       return resolved ? `[img]${resolved}[/img]` : ''
     }
@@ -241,10 +283,10 @@ function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
     case 'h5':
     case 'h6': {
       const content = serializeChildren(el, options).trim()
-      return content ? `[h]${content}[/h]\n\n` : ''
+      return content ? `[h]${content}[/h]\n` : ''
     }
     case 'hr':
-      return '[h][/h]\n\n'
+      return '[h][/h]\n'
     case 'p':
     case 'div': {
       const inner = serializeChildren(el, options)
