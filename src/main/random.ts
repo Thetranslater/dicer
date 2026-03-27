@@ -3,20 +3,11 @@ import { ipcMain } from 'electron'
 import { join } from 'path'
 import { Random } from 'random'
 import { configManager } from './configManager'
-import { config } from 'process'
 
 
 type RdrandLiteModule = {
     rdSeed32: () => number
     normalizeUint32: (value: number) => number
-}
-
-function resolveUseTrueRandomFromConfig(): boolean {
-    const projectConfig = configManager.get('project') as Record<string, unknown> | undefined
-    if (projectConfig && typeof projectConfig.useTrueRandom === 'boolean') {
-        return projectConfig.useTrueRandom
-    }
-    return true
 }
 class RandomGenerator {
     static RNG?: RandomGenerator = undefined

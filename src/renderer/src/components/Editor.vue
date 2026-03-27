@@ -358,7 +358,7 @@ function IpcCallbackRegister() {
       const fsnode = (args[0] as FSNode[])[0]
       const content = fsnode.data
       const filePath = fsnode.path
-      if (!content) return
+      if (typeof content !== 'string' && !content) return
 
       const proceed = await handleBeforeFileSwitch()
       if (!proceed) return

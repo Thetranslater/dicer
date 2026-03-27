@@ -8,7 +8,7 @@ import { windowManager } from './windowManager'
 import { DFS } from './fs'
 import { registerCoreIpcHandlers } from './core'
 import { registerImageManagerIpcHandlers } from './imageManagerService'
-import type { OpenFileOptions, OpenOption } from '../renderer/src/utils/fileService'
+import type { OpenOption, SaveOption } from '../renderer/src/utils/fileService'
 import { registerConfigManagerIpcHandlers } from './configManager'
 
 
@@ -21,7 +21,7 @@ function registerLocalProtocol(): void {
     // 还原 Windows 盘符中被浏览器去掉的冒号
     // 例如 C/User/... -> C:/Users/...
     filePath = filePath.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
-    const options: OpenFileOptions = {
+    const options: OpenOption = {
       fileOption: {
         path: [filePath],
         isLoad: true,
@@ -123,7 +123,23 @@ app.whenReady().then(() => {
           label: '新建...',
           //accelerator: 'CmdOrCtrl+N',
           click: () => {
-            windowManager.get('editor')?.webContents.send('menu-file-new')
+            const option: SaveOption = {
+              dialogfilters: [{ name: 'HTML', extensions: ['html', 'htm'] }, { name: 'JSON', extensions: ['json'] }]
+            }
+            const newPath = DFS.fsSave([''], option)
+            if (newPath[0].length > 1) {
+              const ooption: OpenOption = {
+                dialogOpenType: 'file',
+                fileOption: {
+                  path: newPath,
+                  isLoad: true,
+                  dialogfilters: [{ name: 'HTML', extensions: ['html', 'htm'] }, { name: 'JSON', extensions: ['json'] }]
+                }
+              }
+              const result = DFS.fsOpen(ooption)
+              if (result.length === 1)
+                windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-open', result)
+            }
           }
         },
         {

@@ -5,7 +5,7 @@
     "baseFontSizePx": 16
   },
   "image": {
-    "rootPath": "D:/Programs/projects/dicer/dicer/test",
+    "rootPath": "D:/Programs/projects/dicer/dicer/src/renderer/src/assets/emoji",
     "attachmentMappings": {}
   },
   "useTrueRandom": false

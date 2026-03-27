@@ -1,8 +1,8 @@
 ﻿const AC1_EMOJICODE = [
-  'blink', 'goodjob','上','中枪','偷笑','冷','凌乱','反对','吓','吻','呆','咦','哦','哭','哭1','哭笑','哼','喘','喷','嘲笑','嘲笑1','囧','委屈','心','忧伤','怒','怕','惊','愁','抓狂','抠鼻','擦汗','无语','晕','汗','瞎','羞','羡慕','花痴','茶','衰','计划通','赞同','闪光','黑枪'
+  'blink', 'goodjob', '上', '中枪', '偷笑', '冷', '凌乱', '反对', '吓', '吻', '呆', '咦', '哦', '哭', '哭1', '哭笑', '哼', '喘', '喷', '嘲笑', '嘲笑1', '囧', '委屈', '心', '忧伤', '怒', '怕', '惊', '愁', '抓狂', '抠鼻', '擦汗', '无语', '晕', '汗', '瞎', '羞', '羡慕', '花痴', '茶', '衰', '计划通', '赞同', '闪光', '黑枪'
 ]
 const AC2_EMOJICODE = [
-  'goodjob','偷笑','怒','欸嘿','笑','那个...','哦嗬嗬嗬','舔','有何贵干','病娇','lucky','鬼脸','大哭','冷','哭','妮可妮可妮','惊','poi','恨','囧2','中枪','囧','你看看你','yes','doge','自戳双目','偷吃','冷笑','壁咚','不活了','不明觉厉','jojo立','jojo立2','jojo立3','jojo立5','jojo立方4','威吓','你已经死了','异议','认真','你这种人...','是在下输了','抢镜头','你为猴这么','干杯','干杯2'
+  'goodjob', '偷笑', '怒', '欸嘿', '笑', '那个...', '哦嗬嗬嗬', '舔', '有何贵干', '病娇', 'lucky', '鬼脸', '大哭', '冷', '哭', '妮可妮可妮', '惊', 'poi', '恨', '囧2', '中枪', '囧', '你看看你', 'yes', 'doge', '自戳双目', '偷吃', '冷笑', '壁咚', '不活了', '不明觉厉', 'jojo立', 'jojo立2', 'jojo立3', 'jojo立5', 'jojo立方4', '威吓', '你已经死了', '异议', '认真', '你这种人...', '是在下输了', '抢镜头', '你为猴这么', '干杯', '干杯2'
 ]
 
 function normalizeText(text: string): string {
@@ -34,7 +34,7 @@ function normalizePath(input: string): string {
   let path = input.replace(/\\/g, '/')
   path = path.replace(/\/+/g, '/')
   path = path.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
-  return path.replace(/^[A-Z]/, (match)=>match.toLowerCase())
+  return path.replace(/^[A-Z]/, (match) => match.toLowerCase())
 }
 
 function parsePxValue(value: string): number | null {
@@ -200,7 +200,7 @@ function serializeTable(el: HTMLElement, options?: HtmlToNgaBBSOptions): string 
     .filter(Boolean)
 
   if (lines.length === 0) return ''
-  return `[table]\n${lines.join('\n')}\n[/table]\n\n`
+  return `[table]\n${lines.join('\n')}\n[/table]\n`
 }
 
 function serializeDetails(el: HTMLElement, options?: HtmlToNgaBBSOptions): string {
@@ -216,10 +216,10 @@ function serializeDetails(el: HTMLElement, options?: HtmlToNgaBBSOptions): strin
     .trim()
 
   if (!summary) {
-    return `[collapse]\n${content}\n[/collapse]\n\n`
+    return `[collapse]\n${content}\n[/collapse]\n`
   }
 
-  return `[collapse=${summary}]\n${content}\n[/collapse]\n\n`
+  return `[collapse=${summary}]\n${content}\n[/collapse]\n`
 }
 
 function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
@@ -267,7 +267,7 @@ function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
     }
     case 'blockquote': {
       const content = serializeChildren(el, options).trim()
-      return content ? `[quote]\n${content}\n[/quote]\n\n` : ''
+      return content ? `[quote]\n${content}\n[/quote]\n` : ''
     }
     case 'ul':
     case 'ol':
@@ -291,7 +291,7 @@ function serializeNode(node: Node, options?: HtmlToNgaBBSOptions): string {
     case 'div': {
       const inner = serializeChildren(el, options)
       const block = applyBlockStyle(el, inner).trim()
-      return block ? `${block}\n\n` : '\n'
+      return block ? `${block}\n` : '\n'
     }
     case 'span': {
       const inner = serializeChildren(el, options)
@@ -308,7 +308,7 @@ export function htmlToNgaBBS(html: string, options?: HtmlToNgaBBSOptions): strin
   const raw = serializeChildren(doc.body, options)
 
   return raw
-    .replace(/\n{3,}/g, '\n\n')
+    .replace(/\n{3,}/g, '\n')
     .replace(/[ \t]+\n/g, '\n')
     .trim()
 }
