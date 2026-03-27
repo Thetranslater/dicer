@@ -6,11 +6,15 @@ import type { FSNode, SaveFileOptions, SaveFileDetails, OpenOption, SaveOption }
 import { configManager } from './configManager'
 import { broadcast, windowManager } from './windowManager'
 
-import { rdSeed32, normalizeUint32 } from 'rdrand-lite'
 import { Random } from 'random'
 
+type RdrandLiteModule = {
+  rdSeed32: () => number
+  normalizeUint32: (value: number) => number
+}
 class RandomGenerator{
   static RNG? : RandomGenerator = undefined
+  static mod = RandomGenerator._loadRdrandLite()
 
   private _generator? : Random
   private _seed? : string | number
@@ -18,16 +22,46 @@ class RandomGenerator{
   constructor(pseudo? : boolean, seed?: string | number){
     this._is_pseudo = pseudo ?? true
     if(this._is_pseudo){
-      this._seed = seed ?? rdSeed32()
+      this._seed = seed ?? RandomGenerator._rdSeed32Safe()
       this._generator = new Random(this._seed)
     }
   }
+  private static _loadRdrandLite(): RdrandLiteModule | null {
+    const requireFunc = eval('require') as NodeJS.Require
+    const candidates = process.env.NODE_ENV === 'production'
+      ? [
+          join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', 'rdrand-lite'),
+          'rdrand-lite'
+        ]
+      : ['rdrand-lite']
+  
+    for (const target of candidates) {
+      try {
+        const mod = requireFunc(target) as RdrandLiteModule
+        if (typeof mod?.rdSeed32 === 'function' && typeof mod?.normalizeUint32 === 'function') {
+          console.log('[Random] rdrand-lite loaded:', target)
+          return mod
+        }
+      } catch (error) {
+        console.warn('[Random] failed to load rdrand-lite from', target, error)
+      }
+    }
+    return null
+  }
+  private static _rdSeed32Safe(): number {
+    if (RandomGenerator.mod) return RandomGenerator.mod.rdSeed32()
+    return (Math.random() * 0xFFFFFFFF) >>> 0
+  }
+  private static _normalizeUint32Safe(value: number): number {
+    if (RandomGenerator.mod) return RandomGenerator.mod.normalizeUint32(value)
+    return (value >>> 0) / 0xFFFFFFFF
+  }
   gen(pseudo? : boolean){
-    if(pseudo) return normalizeUint32(rdSeed32())
+    if(pseudo) return RandomGenerator._normalizeUint32Safe(RandomGenerator._rdSeed32Safe())
     if(this._is_pseudo){
       return this._generator!.float()
     }
-    return normalizeUint32(rdSeed32())
+    return RandomGenerator._normalizeUint32Safe(RandomGenerator._rdSeed32Safe())
   }
   setseed(seed : string | number){
     this._is_pseudo = true
