@@ -127,7 +127,7 @@ app.whenReady().then(() => {
               dialogfilters: [{ name: 'HTML', extensions: ['html', 'htm'] }, { name: 'JSON', extensions: ['json'] }]
             }
             const newPath = DFS.fsSave([''], option)
-            if (newPath[0].length > 1) {
+            if (newPath[0]?.length > 1) {
               const ooption: OpenOption = {
                 dialogOpenType: 'file',
                 fileOption: {

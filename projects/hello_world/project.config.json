@@ -1,8 +1,0 @@
-{
-  "root": "D:/Programs/projects/dicer/dicer/projects/hello_world",
-  "name": "hello_world",
-  "image": {
-    "rootPath": "D:/Programs/projects/dicer/dicer/test",
-    "attachmentMappings": {}
-  }
-}

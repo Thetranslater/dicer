@@ -35,7 +35,7 @@ const statusMessage = ref('')
 
 //#region 'basic function'
 const IMAGE_EXTENSIONS = new Set([
-  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.svg', '.tif', '.tiff', '.ico'
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.ico'
 ])
 
 function isPathSelected(path: string): boolean {
