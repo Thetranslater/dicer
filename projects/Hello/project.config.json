@@ -1,0 +1,12 @@
+{
+  "root": "D:/Programs/projects/dicer/dicer/projects/Hello",
+  "name": "Hello",
+  "useTrueRandom": true,
+  "image": {
+    "rootPath": "D:/Programs/projects/dicer/dicer/projects/Hello/images",
+    "attachmentMappings": {}
+  },
+  "editor": {
+    "baseFontSizePx": 16
+  }
+}

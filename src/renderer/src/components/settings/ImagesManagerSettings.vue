@@ -119,13 +119,16 @@ async function persistConfigOnExit(): Promise<void> {
   }
 }
 
+window.onbeforeunload = (_event) => {
+  persistConfigOnExit()
+}
+
 onMounted(() => {
-  void loadConfig()
+  loadConfig()
 })
 
 onBeforeUnmount(() => {
-  console.log('unmount')
-  void persistConfigOnExit()
+  persistConfigOnExit()
 })
 </script>
 

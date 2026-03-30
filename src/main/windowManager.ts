@@ -1,6 +1,10 @@
-import { BrowserWindow, shell, Menu } from 'electron'
+import { BrowserWindow, shell, Menu, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
+
+import { DFS } from './fs'
+import { configManager } from './configManager'
+import { SaveOption } from '../renderer/src/utils/fileService'
 
 interface BaseWindowOptions {
   width: number
@@ -67,6 +71,13 @@ class WindowManager {
     this.windows.set(type, window)
 
     window.on('closed', () => {
+      if (type === 'settings') {
+        const config = configManager.getAll()
+        const option: SaveOption = {
+          path: [join(config['root'], 'project.config.json')]
+        }
+        DFS.fsSave([JSON.stringify(config, null, 2)], option)
+      }
       this.windows.set(type, null)
     })
   }
