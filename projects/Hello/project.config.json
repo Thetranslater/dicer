@@ -4,7 +4,10 @@
   "useTrueRandom": true,
   "image": {
     "rootPath": "D:/Programs/projects/dicer/dicer/projects/Hello/images",
-    "attachmentMappings": {}
+    "attachmentMappings": {
+      "ch1/屏幕截图 2026-03-27 211753.png": "./mon_202603/29/9bQ2x-8wwzZcT3cSsg-j4.jpg",
+      "ch1/屏幕截图 2026-03-27 211917.png": "./mon_202603/29/9bQ2x-76utK1cT3cSsg-fz.jpg"
+    }
   },
   "editor": {
     "baseFontSizePx": 16
