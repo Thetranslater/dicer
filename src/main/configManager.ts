@@ -13,7 +13,7 @@ function isPlainObject(value: unknown): value is Record<string, any> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
-const MODULE_NAMES = new Set(['project', 'editor', 'image', 'setting'])
+const MODULE_NAMES = new Set(['project', 'editor', 'image', 'setting', 'asset'])
 
 class ConfigManager {
   private static instance: ConfigManager

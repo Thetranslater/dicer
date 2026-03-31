@@ -11,5 +11,8 @@
   },
   "editor": {
     "baseFontSizePx": 16
+  },
+  "asset": {
+    "root": "D:/Programs/projects/dicer/dicer/projects/Hello/assets"
   }
 }

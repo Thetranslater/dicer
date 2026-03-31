@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, protocol } from 'electron'
+﻿import { app, BrowserWindow, ipcMain, protocol } from 'electron'
 import { updateElectronApp } from 'update-electron-app'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 // import { net } from 'electron'
@@ -13,13 +13,13 @@ import { registerConfigManagerIpcHandlers } from './configManager'
 
 
 
-// 注册本地文件协议
+// 娉ㄥ唽鏈湴鏂囦欢鍗忚
 function registerLocalProtocol(): void {
   protocol.handle('app', async (request) => {
     let filePath = request.url.replace(/^app:\/\//, '')
     filePath = decodeURIComponent(filePath)
-    // 还原 Windows 盘符中被浏览器去掉的冒号
-    // 例如 C/User/... -> C:/Users/...
+    // 杩樺師 Windows 鐩樼涓娴忚鍣ㄥ幓鎺夌殑鍐掑彿
+    // 渚嬪 C/User/... -> C:/Users/...
     filePath = filePath.replace(/^([A-Za-z])\/(.+)$/, '$1:/$2')
     const options: OpenOption = {
       fileOption: {
@@ -35,13 +35,13 @@ function registerLocalProtocol(): void {
 
 updateElectronApp()
 
-// 测试上传图片
+// 娴嬭瘯涓婁紶鍥剧墖
 // function testUploadImage(): void {
 //   const imagePath = join(__dirname, '../../test.jpg')
-//   console.log('读取图片路径:', imagePath)
+//   console.log('璇诲彇鍥剧墖璺緞:', imagePath)
 
 //   const imageBuffer = readFileSync(imagePath)
-//   console.log('图片大小:', imageBuffer.length, 'bytes')
+//   console.log('鍥剧墖澶у皬:', imageBuffer.length, 'bytes')
 //   const params = {
 //     'v2': '1',
 //     'func': 'upload',
@@ -55,7 +55,7 @@ updateElectronApp()
 //   const url = new URL(baseUrl)
 //   for (const key in params) {
 //     if (key === 'attachment_file1') {
-//       continue // 二进制数据单独处�?    }
+//       continue // 浜岃繘鍒舵暟鎹崟鐙锟?    }
 //     url.searchParams.append(key, params[key as keyof typeof params])
 //     }
 //   }
@@ -83,7 +83,7 @@ updateElectronApp()
 //       data += chunk.toString()
 //     })
 //     response.on('end', () => {
-//       console.log('上传响应:', data)
+//       console.log('涓婁紶鍝嶅簲:', data)
 //     })
 //   })
 
@@ -107,7 +107,7 @@ protocol.registerSchemesAsPrivileged([
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
 
-  // 注册本地文件协议
+  // 娉ㄥ唽鏈湴鏂囦欢鍗忚
   registerLocalProtocol()
 
   registerCoreIpcHandlers()
@@ -117,11 +117,10 @@ app.whenReady().then(() => {
   //Menu template
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: '文件',
+      label: 'File',
       submenu: [
         {
-          label: '新建...',
-          //accelerator: 'CmdOrCtrl+N',
+          label: 'New...',
           click: () => {
             const option: SaveOption = {
               dialogfilters: [{ name: 'HTML', extensions: ['html', 'htm'] }, { name: 'JSON', extensions: ['json'] }]
@@ -143,8 +142,7 @@ app.whenReady().then(() => {
           }
         },
         {
-          label: '打开...',
-          //accelerator: 'CmdOrCtrl+O',
+          label: 'Open...',
           click: async () => {
             try {
               const option: OpenOption = {
@@ -168,13 +166,11 @@ app.whenReady().then(() => {
         },
         { type: 'separator' },
         {
-          label: '保存',
-          //accelerator: 'CmdOrCtrl+S',
+          label: 'Save',
           click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-save')
         },
         {
-          label: '另存为..',
-          //accelerator: 'CmdOrCtrl+Shift+S',
+          label: 'Save As...',
           click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-saveas')
         },
         { type: 'separator' },
@@ -182,11 +178,10 @@ app.whenReady().then(() => {
       ]
     },
     {
-      label: '图像管理',
+      label: 'Images',
       submenu: [
         {
-          label: '打开图像管理窗口',
-          //accelerator: 'CmdOrCtrl+Shift+I',
+          label: 'Open Images Manager',
           click: () => {
             windowManager.createWindow('images')
           }
@@ -194,11 +189,21 @@ app.whenReady().then(() => {
       ]
     },
     {
-      label: '设置',
+      label: 'Asset',
       submenu: [
         {
-          label: '打开设置窗口',
-          //accelerator: 'CmdOrCtrl+,',
+          label: 'Open Asset Window',
+          click: () => {
+            windowManager.createWindow('assets')
+          }
+        }
+      ]
+    },
+    {
+      label: 'Settings',
+      submenu: [
+        {
+          label: 'Open Settings Window',
           click: () => {
             windowManager.createWindow('settings')
           }
@@ -241,4 +246,6 @@ app.on('window-all-closed', () => {
     app.quit()
   }
 })
+
+
 

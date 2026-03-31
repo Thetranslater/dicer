@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { OpenOption, SaveOption } from '@renderer/utils/fileService'
+import { join } from 'path';
 
 const selectedPath = ref('')
 const projectName = ref('default')
@@ -134,7 +135,10 @@ async function createProject(): Promise<void> {
     const projectConfig = {
       root: projectDir,
       name: safeName,
-      useTrueRandom: false
+      useTrueRandom: false,
+      asset: {
+        root: `${projectDir}/assets`
+      }
     }
 
     const saveConfigOptions: SaveOption = {

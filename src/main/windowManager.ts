@@ -1,4 +1,4 @@
-import { BrowserWindow, shell, Menu } from 'electron'
+﻿import { BrowserWindow, shell, Menu } from 'electron'
 import { is } from '@electron-toolkit/utils'
 import { join } from 'path'
 
@@ -28,19 +28,25 @@ const MODULE_WINDOW_CONFIG: Record<string, BaseWindowOptions> = {
   images: {
     width: 800,
     height: 600,
-    title: '图像管理',
+    title: 'Images Manager',
     htmlFile: join(__dirname, '../renderer/images.html')
+  },
+  assets: {
+    width: 980,
+    height: 720,
+    title: 'Asset Manager',
+    htmlFile: join(__dirname, '../renderer/assets.html')
   },
   settings: {
     width: 980,
     height: 680,
-    title: '设置',
+    title: 'Settings',
     htmlFile: join(__dirname, '../renderer/settings.html')
   },
   launcher: {
     width: 620,
     height: 380,
-    title: '启动器',
+    title: 'Launcher',
     htmlFile: join(__dirname, '../renderer/project-launcher.html')
   }
 }
@@ -153,7 +159,7 @@ class WindowManager {
 
     if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
       const fileName = htmlFile.split(/[\\/]/).pop() ?? 'index.html'
-      const pageName = ['index.html', 'images.html', 'settings.html', 'project-launcher.html'].includes(fileName)
+      const pageName = ['index.html', 'images.html', 'assets.html', 'settings.html', 'project-launcher.html'].includes(fileName)
         ? fileName
         : 'index.html'
       const baseUrl = process.env['ELECTRON_RENDERER_URL']

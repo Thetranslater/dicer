@@ -22,6 +22,7 @@ export default defineConfig({
           index: resolve(__dirname, 'src/renderer/index.html'),
           images: resolve(__dirname, 'src/renderer/images.html'),
           settings: resolve(__dirname, 'src/renderer/settings.html'),
+          assets: resolve(__dirname, 'src/renderer/assets.html'),
           projectLauncher: resolve(__dirname, 'src/renderer/project-launcher.html')
         }
       }

@@ -46,6 +46,7 @@ const api = {
   fs: {
     open: (option?) => ipcRenderer.invoke('fs:open', option),
     save: (content: any[], option?) => ipcRenderer.invoke('fs:save', content, option),
+    mkdir: (path: string, option?) => ipcRenderer.invoke('fs:mkdir', path, option),
     mv: (source: string, target: string, option?) => ipcRenderer.invoke('fs:mv', source, target, option),
     rm: (paths: string[], option?) => ipcRenderer.invoke('fs:rm', paths, option),
     rnm: (target: string, next: string, option?) => ipcRenderer.invoke('fs:rnm', target, next, option)
