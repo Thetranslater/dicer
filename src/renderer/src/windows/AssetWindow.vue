@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import type { FSNode, OpenOption, SaveOption } from '../utils/fileService'
 import AssetCard from '../components/asset/Asset.vue'
 import ComponentView from '../components/asset/Component.vue'
@@ -10,7 +10,6 @@ type AssetExplorerItem = {
   isDirectory: boolean
   isAssetFile?: boolean
   isParentNav?: boolean
-  relativePath: string
 }
 
 type AssetComponentNode = {
@@ -22,6 +21,13 @@ type AssetComponentNode = {
 type AssetDocument = {
   name: string
   components: AssetComponentNode[]
+}
+
+let runtimeComponentIdSeed = 0
+
+function createRuntimeComponentId(): string {
+  runtimeComponentIdSeed += 1
+  return `component-${Date.now()}-${runtimeComponentIdSeed}`
 }
 
 const ASSET_MODULE_NAME = 'asset'
@@ -48,16 +54,29 @@ const selectedAsset = ref<AssetDocument | null>(null)
 const activeComponentId = ref<string | null>(null)
 const expandedComponentIds = ref<string[]>([])
 
-const dragSourcePath = ref<string | null>(null)
-const dropTargetPath = ref<string | null>(null)
-
 const searchKeyword = ref('')
 const loading = ref(false)
 const resizeStartY = ref(0)
 const resizeStartHeight = ref(0)
+const renamingPath = ref<string | null>(null)
+const renamingName = ref('')
+const renameInputRef = ref<HTMLInputElement | null>(null)
+const renamingBusy = ref(false)
 
 const hasAssetsRoot = computed(() => Boolean(assetsRootPath.value))
 const hasSelectedAsset = computed(() => Boolean(selectedAsset.value && selectedAssetPath.value))
+const selectedExplorerItem = computed<AssetExplorerItem | null>(() => {
+  if (!selectedPath.value) return null
+  return (
+    visibleItems.value.find((item) => item.path === selectedPath.value) ??
+    items.value.find((item) => item.path === selectedPath.value) ??
+    null
+  )
+})
+
+watch(activeComponentId, (value) => {
+  console.log('[AssetWindow] activeComponentId =>', value)
+})
 
 const visibleItems = computed(() => {
   const keyword = searchKeyword.value.trim().toLowerCase()
@@ -66,19 +85,18 @@ const visibleItems = computed(() => {
   if (keyword) {
     list = list.filter((item) => {
       return (
-        item.name.toLowerCase().includes(keyword) ||
-        item.relativePath.toLowerCase().includes(keyword)
+        item.name.toLowerCase().includes(keyword)
       )
     })
   }
 
   list.sort((a, b) => {
     if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
-    return a.relativePath.localeCompare(b.relativePath, 'en-US')
+    return a.name.localeCompare(b.name, 'en-US')
   })
 
-  const rootKey = toPathKey(assetsRootPath.value)
-  const currentKey = toPathKey(currentPath.value)
+  const rootKey = assetsRootPath.value.toLowerCase()
+  const currentKey = currentPath.value.toLowerCase()
   if (currentPath.value && rootKey && currentKey !== rootKey) {
     const parentPath = getParentPath(currentPath.value)
     if (parentPath) {
@@ -89,7 +107,6 @@ const visibleItems = computed(() => {
           isDirectory: true,
           isAssetFile: false,
           isParentNav: true,
-          relativePath: '..'
         },
         ...list
       ]
@@ -102,6 +119,13 @@ const visibleItems = computed(() => {
 function toErrorMessage(error: unknown): string {
   if (error instanceof Error) return error.message
   return String(error)
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el) return false
+  const tag = el.tagName
+  return el.isContentEditable || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -120,16 +144,8 @@ function joinPath(basePath: string, fileName: string): string {
   return `${basePath.replace(/[\\/]+$/, '')}/${fileName}`.replace(/\\/g, '/')
 }
 
-function trimTrailingSlash(path: string): string {
-  return path.replace(/\/+$/, '')
-}
-
-function toPathKey(path: string): string {
-  return trimTrailingSlash(path).toLowerCase()
-}
-
 function getParentPath(path: string): string | null {
-  const cleaned = trimTrailingSlash(path)
+  const cleaned = path
   if (!cleaned) return null
   if (cleaned === '/') return null
   if (/^[A-Za-z]:$/i.test(cleaned)) return null
@@ -144,17 +160,6 @@ function getParentPath(path: string): string | null {
   return parent
 }
 
-function toRelativePath(fullPath: string): string {
-  const cleanedPath = trimTrailingSlash(fullPath)
-  const cleanedRoot = trimTrailingSlash(assetsRootPath.value)
-
-  if (cleanedPath.toLowerCase().startsWith(cleanedRoot.toLowerCase())) {
-    return cleanedPath.slice(cleanedRoot.length).replace(/^\/+/, '')
-  }
-
-  return cleanedPath
-}
-
 function toDirectExplorerItems(nodes: FSNode[]): AssetExplorerItem[] {
   return nodes
     .filter((node) => {
@@ -166,15 +171,14 @@ function toDirectExplorerItems(nodes: FSNode[]): AssetExplorerItem[] {
       name: node.isDir ? node.name : stripAssetExt(node.name),
       path: node.path,
       isDirectory: node.isDir,
-      isAssetFile: !node.isDir && isAssetFileName(node.name),
-      relativePath: toRelativePath(node.path) || node.name
+      isAssetFile: !node.isDir && isAssetFileName(node.name)
     }))
 }
 
-function normalizeComponentNode(raw: unknown, index: number): AssetComponentNode | null {
+function normalizeComponentNode(raw: unknown, _index: number): AssetComponentNode | null {
   if (!isRecord(raw)) return null
 
-  const id = typeof raw.id === 'string' && raw.id.trim().length > 0 ? raw.id : `component-${index + 1}`
+  const id = createRuntimeComponentId()
   const type = typeof raw.type === 'string' && raw.type.trim().length > 0 ? raw.type : 'PlaceholderComponent'
   const props = isRecord(raw.props) ? raw.props : {}
 
@@ -195,6 +199,19 @@ function normalizeAssetDocument(raw: unknown, fallbackName: string): AssetDocume
   return {
     name: normalizedName,
     components: normalizedComponents
+  }
+}
+
+function toPersistedAssetDocument(doc: AssetDocument): {
+  name: string
+  components: Array<{ type: string; props: Record<string, unknown> }>
+} {
+  return {
+    name: doc.name,
+    components: doc.components.map((component) => ({
+      type: component.type,
+      props: component.props
+    }))
   }
 }
 
@@ -227,14 +244,6 @@ async function loadAssets(targetPath?: string): Promise<void> {
 
     currentPath.value = rootNode?.path || pathToLoad
     items.value = toDirectExplorerItems(children)
-
-    if (selectedPath.value && !items.value.some((item) => item.path === selectedPath.value)) {
-      selectedPath.value = null
-    }
-
-    if (selectedAssetPath.value && !items.value.some((item) => item.path === selectedAssetPath.value)) {
-      resetInspector()
-    }
   } catch (error) {
     console.error('[AssetWindow] loadAssets failed', toErrorMessage(error))
   } finally {
@@ -278,7 +287,8 @@ async function saveSelectedAssetDocument(): Promise<boolean> {
 
   try {
     const option: SaveOption = { path: [selectedAssetPath.value] }
-    await window.api.fs.save([JSON.stringify(selectedAsset.value, null, 2)], option)
+    const persistedDoc = toPersistedAssetDocument(selectedAsset.value)
+    await window.api.fs.save([JSON.stringify(persistedDoc, null, 2)], option)
     return true
   } catch (error) {
     console.error('[AssetWindow] saveSelectedAssetDocument failed', toErrorMessage(error))
@@ -291,10 +301,7 @@ async function initialize(): Promise<void> {
   try {
     const rawAssetConfig = await window.api.cfg.get(ASSET_MODULE_NAME)
     const assetRootFromConfig =
-      rawAssetConfig &&
-        typeof rawAssetConfig === 'object' &&
-        !Array.isArray(rawAssetConfig) &&
-        typeof (rawAssetConfig as AssetModuleConfig).root === 'string'
+      rawAssetConfig && typeof (rawAssetConfig as AssetModuleConfig).root === 'string'
         ? (rawAssetConfig as AssetModuleConfig).root?.trim()
         : ''
 
@@ -304,8 +311,6 @@ async function initialize(): Promise<void> {
       const rawProjectConfig = await window.api.cfg.get('project')
       const projectRoot =
         rawProjectConfig &&
-          typeof rawProjectConfig === 'object' &&
-          !Array.isArray(rawProjectConfig) &&
           typeof (rawProjectConfig as { root?: unknown }).root === 'string'
           ? String((rawProjectConfig as { root?: unknown }).root).trim()
           : ''
@@ -336,13 +341,6 @@ async function initialize(): Promise<void> {
   }
 }
 
-function getSelectedDirectoryPath(): string {
-  if (!selectedPath.value) return currentPath.value || assetsRootPath.value
-  const selected = items.value.find((item) => item.path === selectedPath.value)
-  if (selected?.isDirectory && !selected.isParentNav) return selected.path
-  return currentPath.value || assetsRootPath.value
-}
-
 function makeUniqueName(base: string, existingLowercase: Set<string>): string {
   if (!existingLowercase.has(base.toLowerCase())) return base
   let i = 1
@@ -358,13 +356,13 @@ async function createFolder(): Promise<void> {
 
   loading.value = true
   try {
-    const baseDir = getSelectedDirectoryPath()
-    const baseDirKey = trimTrailingSlash(baseDir).toLowerCase()
+    const baseDir = currentPath.value || assetsRootPath.value
+    const baseDirKey = baseDir.toLowerCase()
     const existingDirNames = new Set(
       items.value
         .filter((item) => {
           if (!item.isDirectory) return false
-          const itemPathKey = trimTrailingSlash(item.path).toLowerCase()
+          const itemPathKey = item.path.toLowerCase()
           return itemPathKey === baseDirKey || itemPathKey.startsWith(`${baseDirKey}/`)
         })
         .map((item) => item.name.toLowerCase())
@@ -387,13 +385,13 @@ async function createAsset(): Promise<void> {
 
   loading.value = true
   try {
-    const baseDir = getSelectedDirectoryPath()
-    const baseDirKey = trimTrailingSlash(baseDir).toLowerCase()
+    const baseDir = currentPath.value || assetsRootPath.value
+    const baseDirKey = baseDir.toLowerCase()
     const existingAssetNames = new Set(
       items.value
         .filter((item) => {
           if (!item.isAssetFile) return false
-          const itemPathKey = trimTrailingSlash(item.path).toLowerCase()
+          const itemPathKey = item.path.toLowerCase()
           return itemPathKey === baseDirKey || itemPathKey.startsWith(`${baseDirKey}/`)
         })
         .map((item) => item.name.toLowerCase())
@@ -411,8 +409,6 @@ async function createAsset(): Promise<void> {
     await window.api.fs.save([JSON.stringify(doc, null, 2)], option)
 
     await loadAssets()
-    selectedPath.value = assetPath
-    await loadAssetDocument(assetPath)
   } catch (error) {
     console.error('[AssetWindow] createAsset failed', toErrorMessage(error))
   } finally {
@@ -428,10 +424,14 @@ async function selectItem(item: AssetExplorerItem): Promise<void> {
     return
   }
 
-  resetInspector()
+  //resetInspector()
 }
 
 async function openItem(item: AssetExplorerItem): Promise<void> {
+  if (renamingPath.value) {
+    await commitRename()
+  }
+
   await selectItem(item)
 
   if (item.isDirectory) {
@@ -439,16 +439,17 @@ async function openItem(item: AssetExplorerItem): Promise<void> {
   }
 }
 
-function getDropTargetDirectory(item: AssetExplorerItem): string | null {
-  if (!item.isDirectory) return null
-  return item.path
-}
+//#region drag-drop
+const dragSourcePath = ref<string | null>(null)
+const dropTargetPath = ref<string | null>(null)
+const dropDoor = ref<EventTarget | null>(null)
 
 function onItemDragStart(event: DragEvent, item: AssetExplorerItem): void {
   if (item.isParentNav) {
     event.preventDefault()
     return
   }
+  dropDoor.value = null
   dragSourcePath.value = item.path
   if (event.dataTransfer) {
     event.dataTransfer.setData('text/plain', item.path)
@@ -457,51 +458,42 @@ function onItemDragStart(event: DragEvent, item: AssetExplorerItem): void {
 }
 
 function onItemDragOver(event: DragEvent, item: AssetExplorerItem): void {
-  const dropDir = getDropTargetDirectory(item)
-  if (!dropDir) return
+  if (!item.isDirectory) return
   event.preventDefault()
+}
+
+function onItemDragEnter(event: DragEvent, item: AssetExplorerItem): void {
+  if (!item.isDirectory) return
+  event.preventDefault()
+  dropDoor.value = event.target
   dropTargetPath.value = item.path
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
 }
 
-function onItemDragEnter(event: DragEvent, item: AssetExplorerItem): void {
-  const dropDir = getDropTargetDirectory(item)
-  if (!dropDir) return
+function onItemDragLeave(event: DragEvent, item: AssetExplorerItem): void {
+  if (!item.isDirectory) return
   event.preventDefault()
-  dropTargetPath.value = item.path
-}
-
-function onItemDragLeave(_event: DragEvent, _item: AssetExplorerItem): void {
-  // Keep target stable for nested DOM.
-}
-
-function onItemDragEnd(): void {
-  dragSourcePath.value = null
-  dropTargetPath.value = null
-}
-
-function canMoveInto(sourcePath: string, targetDir: string): boolean {
-  const src = trimTrailingSlash(sourcePath).toLowerCase()
-  const target = trimTrailingSlash(targetDir).toLowerCase()
-
-  if (src === target) return false
-  if (target.startsWith(`${src}/`)) return false
-  return true
+  if (dropDoor.value !== event.target) return
+  dropDoor.value = null
+  if (dropTargetPath.value === item.path) {
+    dropTargetPath.value = null
+  }
 }
 
 async function onItemDrop(event: DragEvent, item: AssetExplorerItem): Promise<void> {
-  const dropDir = getDropTargetDirectory(item)
-  if (!dropDir) return
+  if (!item.isDirectory) return
 
   event.preventDefault()
 
   const sourcePath = dragSourcePath.value || event.dataTransfer?.getData('text/plain') || ''
   if (!sourcePath) {
+    dropDoor.value = null
     dropTargetPath.value = null
     return
   }
 
-  if (!canMoveInto(sourcePath, dropDir)) {
+  if (sourcePath === item.path) {
+    dropDoor.value = null
     dropTargetPath.value = null
     dragSourcePath.value = null
     return
@@ -509,18 +501,135 @@ async function onItemDrop(event: DragEvent, item: AssetExplorerItem): Promise<vo
 
   loading.value = true
   try {
-    await window.api.fs.mv(sourcePath, dropDir)
+    await window.api.fs.mv(sourcePath, item.path)
     await loadAssets(currentPath.value)
 
-    if (selectedAssetPath.value === sourcePath) {
-      resetInspector()
-    }
   } catch (error) {
     console.error('[AssetWindow] onItemDrop failed', toErrorMessage(error))
   } finally {
     loading.value = false
+    dropDoor.value = null
     dropTargetPath.value = null
     dragSourcePath.value = null
+  }
+}
+//#endregion
+
+function cancelRename(): void {
+  renamingPath.value = null
+  renamingName.value = ''
+}
+
+async function startRenameSelected(): Promise<void> {
+  const item = selectedExplorerItem.value
+  if (!item || item.isParentNav || loading.value) return
+
+  renamingPath.value = item.path
+  renamingName.value = item.name
+
+  await nextTick()
+  renameInputRef.value?.focus()
+  renameInputRef.value?.select()
+}
+
+async function commitRename(): Promise<void> {
+  if (!renamingPath.value || renamingBusy.value) return
+
+  const item =
+    visibleItems.value.find((entry) => entry.path === renamingPath.value) ??
+    items.value.find((entry) => entry.path === renamingPath.value) ??
+    null
+
+  if (!item || item.isParentNav) {
+    cancelRename()
+    return
+  }
+
+  const rawName = renamingName.value.trim()
+  if (!rawName) {
+    cancelRename()
+    return
+  }
+
+  let finalName = rawName
+  if (item.isAssetFile) {
+    const baseName = stripAssetExt(rawName).trim()
+    if (!baseName) {
+      cancelRename()
+      return
+    }
+    finalName = `${baseName}.asset.json`
+  }
+
+  renamingBusy.value = true
+  loading.value = true
+  try {
+    const renamedPath = await window.api.fs.rnm(item.path, finalName)
+    await loadAssets(currentPath.value)
+    selectedPath.value = renamedPath
+
+    if (selectedAssetPath.value === item.path) {
+      selectedAssetPath.value = renamedPath
+    }
+  } catch (error) {
+    console.error('[AssetWindow] commitRename failed', toErrorMessage(error))
+  } finally {
+    renamingBusy.value = false
+    loading.value = false
+    cancelRename()
+  }
+}
+
+function onRenameInputKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Enter') {
+    event.preventDefault()
+    void commitRename()
+    return
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault()
+    cancelRename()
+  }
+}
+
+function setRenameInputRef(el: Element | ComponentPublicInstance | null): void {
+  renameInputRef.value = el instanceof HTMLInputElement ? el : null
+}
+
+async function deleteSelectedItem(): Promise<void> {
+  const item = selectedExplorerItem.value
+  if (!item || item.isParentNav || loading.value || renamingBusy.value) return
+
+  loading.value = true
+  try {
+    await window.api.fs.rm([item.path])
+
+    if (selectedAssetPath.value === item.path) {
+      resetInspector()
+    }
+
+    selectedPath.value = null
+    await loadAssets(currentPath.value)
+  } catch (error) {
+    console.error('[AssetWindow] deleteSelectedItem failed', toErrorMessage(error))
+  } finally {
+    loading.value = false
+  }
+}
+
+function onGlobalKeydown(event: KeyboardEvent): void {
+  if (isEditableTarget(event.target)) return
+
+  if (event.key === 'F2') {
+    event.preventDefault()
+    void startRenameSelected()
+    return
+  }
+
+  if (event.key === 'Delete') {
+    event.preventDefault()
+    void deleteSelectedItem()
   }
 }
 
@@ -558,10 +667,6 @@ function onWindowMouseUp(): void {
   window.removeEventListener('mouseup', onWindowMouseUp)
 }
 
-function onWindowResize(): void {
-  setTopPaneHeight(topPaneHeight.value)
-}
-
 function isExpanded(componentId: string): boolean {
   return expandedComponentIds.value.includes(componentId)
 }
@@ -570,6 +675,7 @@ function toggleComponentNode(componentId: string): void {
   const index = expandedComponentIds.value.indexOf(componentId)
   if (index >= 0) {
     expandedComponentIds.value.splice(index, 1)
+    activeComponentId.value = null
     return
   }
 
@@ -610,7 +716,7 @@ function createDefaultComponentProps(type: string): Record<string, unknown> {
 async function addComponentByType(type: string): Promise<void> {
   if (!selectedAsset.value) return
 
-  const id = `component-${Date.now()}`
+  const id = createRuntimeComponentId()
   selectedAsset.value.components.push({
     id,
     type,
@@ -662,15 +768,14 @@ async function reloadSelectedAsset(): Promise<void> {
 }
 
 onMounted(() => {
-  window.addEventListener('resize', onWindowResize)
-  onWindowResize()
+  window.addEventListener('keydown', onGlobalKeydown)
   initialize()
 })
 
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('mousemove', onWindowMouseMove)
   window.removeEventListener('mouseup', onWindowMouseUp)
+  window.removeEventListener('keydown', onGlobalKeydown)
 })
 </script>
 
@@ -698,13 +803,20 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else class="asset-grid">
-        <div v-for="item in visibleItems" :key="item.path" class="asset-cell" :draggable="!item.isParentNav"
-          @click="void selectItem(item)" @dblclick="void openItem(item)" @dragstart="onItemDragStart($event, item)"
+        <div v-for="item in visibleItems" :key="item.path" class="asset-cell"
+          :draggable="!item.isParentNav && item.path !== renamingPath" @click="void selectItem(item)"
+          @dblclick="void openItem(item)" @dragstart="onItemDragStart($event, item)"
           @dragover.prevent.stop="onItemDragOver($event, item)" @dragenter="onItemDragEnter($event, item)"
-          @dragleave="onItemDragLeave($event, item)" @drop.prevent.stop="void onItemDrop($event, item)"
-          @dragend="onItemDragEnd">
+          @dragleave="onItemDragLeave($event, item)" @drop.prevent.stop="void onItemDrop($event, item)">
           <AssetCard :item="item" :selected="selectedPath === item.path"
-            :drop-target="dropTargetPath === item.path && dragSourcePath !== item.path" />
+            :drop-target="item.isDirectory && dropTargetPath === item.path && dragSourcePath !== item.path">
+            <template #name>
+              <input v-if="renamingPath === item.path" :ref="setRenameInputRef" v-model="renamingName"
+                class="rename-input-inline" @click.stop @dblclick.stop @keydown="onRenameInputKeydown"
+                @blur="commitRename" />
+              <span v-else :title="item.name">{{ item.name }}</span>
+            </template>
+          </AssetCard>
         </div>
       </div>
     </div>
@@ -734,8 +846,7 @@ onBeforeUnmount(() => {
 
       <div v-else class="inspector-tree">
         <div v-for="component in selectedAsset.components" :key="component.id" class="component-node">
-          <div class="node-head" :class="{ active: activeComponentId === component.id }"
-            @click="activeComponentId = component.id">
+          <div class="node-head" :class="{ active: activeComponentId === component.id }">
             <button class="node-toggle" @click.stop="toggleComponentNode(component.id)">
               {{ isExpanded(component.id) ? '▲' : '▼' }}
             </button>
@@ -825,6 +936,19 @@ onBeforeUnmount(() => {
   padding: 0 10px;
   background: #fff;
   font-size: 13px;
+}
+
+.rename-input-inline {
+  width: 100%;
+  height: 24px;
+  border: 1px solid #0969da;
+  border-radius: 4px;
+  padding: 0 6px;
+  background: #fff;
+  font-size: 11px;
+  line-height: 1;
+  box-sizing: border-box;
+  outline: none;
 }
 
 .asset-grid {
@@ -921,14 +1045,15 @@ onBeforeUnmount(() => {
   grid-template-columns: 14px 1fr;
   align-items: center;
   gap: 4px;
-  padding: 2px 0;
+  padding: 2px 4px;
   background: transparent;
-  border-bottom: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
 }
 
 .node-head.active {
   background: transparent;
-  border-bottom: none;
+  border-color: #0969da;
 }
 
 .node-toggle {

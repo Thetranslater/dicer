@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
 import type { OpenOption, SaveOption } from '@renderer/utils/fileService'
-import { join } from 'path';
 
 const selectedPath = ref('')
 const projectName = ref('default')

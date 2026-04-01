@@ -20,7 +20,9 @@ defineProps<{
       <span v-if="item.isDirectory">DIR</span>
       <span v-else>AST</span>
     </div>
-    <div class="asset-name">{{ item.name }}</div>
+    <div class="asset-name">
+      <slot name="name">{{ item.name }}</slot>
+    </div>
   </div>
 </template>
 

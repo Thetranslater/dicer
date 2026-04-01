@@ -2,7 +2,6 @@
   "name": "New Asset",
   "components": [
     {
-      "id": "component-1774966464616",
       "type": "CharacterComponent",
       "props": {
         "name": "",
