@@ -41,7 +41,6 @@
     "@tiptap/pm": "^3.20.1",
     "@tiptap/starter-kit": "^3.20.1",
     "@tiptap/vue-3": "^3.20.1",
-    "axios": "^1.14.0",
     "random": "^5.4.1",
     "rdrand-lite": "^1.4.12",
     "tiptap-extension-image-freely": "^0.1.2",

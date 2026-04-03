@@ -5,12 +5,53 @@
       "type": "CharacterComponent",
       "props": {
         "name": "",
-        "role": "Warrior",
-        "faction": "",
-        "hp": 100,
+        "hp": 9,
         "attack": 10,
         "defense": 8,
-        "agility": 8
+        "agility": 8,
+        "gender": "Female",
+        "race": "",
+        "bio": "",
+        "magic": 0,
+        "strength": 0,
+        "sanity": 0,
+        "intelligence": 0,
+        "appearance": 0,
+        "endurance": 0,
+        "luck": 0,
+        "age": 0
+      }
+    },
+    {
+      "type": "SkillComponent",
+      "props": {}
+    },
+    {
+      "type": "GraphComponent",
+      "props": {
+        "name": "",
+        "edges": [
+          {
+            "to": "D:/Programs/projects/dicer/dicer/projects/Hello/assets/New Asset.asset.json",
+            "value": 0,
+            "expr": "0"
+          },
+          {
+            "to": "",
+            "value": 0,
+            "expr": "0"
+          },
+          {
+            "to": "",
+            "value": 0,
+            "expr": "0"
+          },
+          {
+            "to": "",
+            "value": 0,
+            "expr": "0"
+          }
+        ]
       }
     }
   ]

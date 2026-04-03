@@ -85,7 +85,7 @@ class DNode extends Evaluable {
     this.op = op
   }
 
-  async evaluate() : Promise<number> {
+  async evaluate(): Promise<number> {
     if (this.op instanceof Evaluable) return this.op.evaluate()
 
     if (!this.left || !this.right) {
@@ -110,7 +110,9 @@ class DNode extends Evaluable {
     }
   }
 }
-
+/**
+ * throw exception
+ */
 export class Expression extends Evaluable {
   private root: DNode | null = null
   public expression: string
@@ -123,6 +125,10 @@ export class Expression extends Evaluable {
     this.root = this.buildTree(rpn)
   }
 
+  /**
+   * throw exception
+   * @returns 
+   */
   tokenize(): string[] {
     const expr = this.expression.replace(/\s+/g, '')
     if (!expr) {

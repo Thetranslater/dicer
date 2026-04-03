@@ -62,6 +62,16 @@ const renamingPath = ref<string | null>(null)
 const renamingName = ref('')
 const renameInputRef = ref<HTMLInputElement | null>(null)
 const renamingBusy = ref(false)
+const addComponentMenuRef = ref<HTMLElement | null>(null)
+const showAddComponentMenu = ref(false)
+
+const addComponentOptions = [
+  { type: 'CharacterComponent', label: 'Character' },
+  { type: 'ItemComponent', label: 'Item' },
+  { type: 'SkillComponent', label: 'Skill' },
+  { type: 'GraphComponent', label: 'Graph' }
+] as const
+type AddComponentType = (typeof addComponentOptions)[number]['type']
 
 const hasAssetsRoot = computed(() => Boolean(assetsRootPath.value))
 const hasSelectedAsset = computed(() => Boolean(selectedAsset.value && selectedAssetPath.value))
@@ -76,6 +86,10 @@ const selectedExplorerItem = computed<AssetExplorerItem | null>(() => {
 
 watch(activeComponentId, (value) => {
   console.log('[AssetWindow] activeComponentId =>', value)
+})
+
+watch(hasSelectedAsset, (value) => {
+  if (!value) showAddComponentMenu.value = false
 })
 
 const visibleItems = computed(() => {
@@ -621,6 +635,12 @@ async function deleteSelectedItem(): Promise<void> {
 function onGlobalKeydown(event: KeyboardEvent): void {
   if (isEditableTarget(event.target)) return
 
+  if (event.key === 'Escape' && showAddComponentMenu.value) {
+    event.preventDefault()
+    showAddComponentMenu.value = false
+    return
+  }
+
   if (event.key === 'F2') {
     event.preventDefault()
     void startRenameSelected()
@@ -683,36 +703,6 @@ function toggleComponentNode(componentId: string): void {
   activeComponentId.value = componentId
 }
 
-function createDefaultComponentProps(type: string): Record<string, unknown> {
-  if (type === 'CharacterComponent') {
-    return {
-      name: '',
-      role: 'Warrior',
-      faction: '',
-      hp: 100,
-      attack: 10,
-      defense: 8,
-      agility: 8
-    }
-  }
-
-  if (type === 'ItemComponent') {
-    return {
-      name: '',
-      element: 'None',
-      weaponType: 'None',
-      rarity: 'Common',
-      enchantments: [],
-      stackable: false,
-      consumable: false
-    }
-  }
-
-  return {
-    note: 'Edit this component in a concrete implementation.'
-  }
-}
-
 async function addComponentByType(type: string): Promise<void> {
   if (!selectedAsset.value) return
 
@@ -720,7 +710,7 @@ async function addComponentByType(type: string): Promise<void> {
   selectedAsset.value.components.push({
     id,
     type,
-    props: createDefaultComponentProps(type)
+    props: {}
   })
 
   const saved = await saveSelectedAssetDocument()
@@ -729,6 +719,20 @@ async function addComponentByType(type: string): Promise<void> {
     if (!expandedComponentIds.value.includes(id)) {
       expandedComponentIds.value = [...expandedComponentIds.value, id]
     }
+  }
+}
+
+async function onAddComponentMenuSelect(type: AddComponentType): Promise<void> {
+  showAddComponentMenu.value = false
+  await addComponentByType(type)
+}
+
+function onWindowPointerDown(event: MouseEvent): void {
+  if (!showAddComponentMenu.value) return
+  const target = event.target as Node | null
+  if (!target) return
+  if (addComponentMenuRef.value && !addComponentMenuRef.value.contains(target)) {
+    showAddComponentMenu.value = false
   }
 }
 
@@ -762,13 +766,9 @@ async function removeActiveComponent(): Promise<void> {
   }
 }
 
-async function reloadSelectedAsset(): Promise<void> {
-  if (!selectedAssetPath.value) return
-  await loadAssetDocument(selectedAssetPath.value)
-}
-
 onMounted(() => {
   window.addEventListener('keydown', onGlobalKeydown)
+  window.addEventListener('mousedown', onWindowPointerDown)
   initialize()
 })
 
@@ -776,6 +776,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('mousemove', onWindowMouseMove)
   window.removeEventListener('mouseup', onWindowMouseUp)
   window.removeEventListener('keydown', onGlobalKeydown)
+  window.removeEventListener('mousedown', onWindowPointerDown)
 })
 </script>
 
@@ -829,13 +830,23 @@ onBeforeUnmount(() => {
       <div class="inspector-head">
         <div class="inspector-title">Inspector</div>
         <div class="inspector-actions">
-          <button @click="reloadSelectedAsset" :disabled="loading || !hasSelectedAsset">Reload</button>
-          <button @click="addComponentByType('CharacterComponent')" :disabled="loading || !hasSelectedAsset">
-            Add Character
-          </button>
-          <button @click="addComponentByType('ItemComponent')" :disabled="loading || !hasSelectedAsset">
-            Add Item
-          </button>
+          <div ref="addComponentMenuRef" class="add-component-menu">
+            <button class="add-component-trigger" :disabled="loading || !hasSelectedAsset" @click="()=> showAddComponentMenu = !showAddComponentMenu">
+              +
+            </button>
+
+            <div v-if="showAddComponentMenu" class="add-component-dropdown">
+              <button
+                v-for="option in addComponentOptions"
+                :key="option.type"
+                class="add-component-item"
+                :disabled="loading"
+                @click="void onAddComponentMenuSelect(option.type)"
+              >
+                Add {{ option.label }}
+              </button>
+            </div>
+          </div>
           <button @click="removeActiveComponent" :disabled="loading || !activeComponentId">Remove Component</button>
         </div>
       </div>
@@ -1016,6 +1027,53 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.add-component-menu {
+  position: relative;
+}
+
+.add-component-trigger {
+  width: 30px;
+  min-width: 30px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.add-component-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 140px;
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 8px 20px rgba(31, 35, 40, 0.12);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.add-component-dropdown .add-component-item {
+  height: 30px;
+  border: none;
+  border-bottom: 1px solid #eef2f7;
+  border-radius: 0;
+  background: #fff;
+  text-align: left;
+  padding: 0 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.add-component-dropdown .add-component-item:last-child {
+  border-bottom: none;
+}
+
+.add-component-dropdown .add-component-item:hover {
+  background: #f6f8fa;
 }
 
 .inspector-tree {

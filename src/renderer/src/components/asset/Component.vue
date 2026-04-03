@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, type Component as VueComponent } from 'vue'
-import CharacterComponentEditor from './editors/CharacterComponentEditor.vue'
-import ItemComponentEditor from './editors/ItemComponentEditor.vue'
-import PlaceholderComponentEditor from './editors/PlaceholderComponentEditor.vue'
+import CharacterComponent from './components/CharacterComponent.vue'
+import ItemComponent from './components/ItemComponent.vue'
+import SkillComponent from './components/SkillComponent.vue'
+import GraphComponent from './components/GraphComponent.vue'
 
 type ComponentNode = {
   id: string
@@ -19,9 +20,10 @@ const emit = defineEmits<{
 }>()
 
 const editorRegistry: Record<string, VueComponent> = {
-  CharacterComponent: CharacterComponentEditor,
-  ItemComponent: ItemComponentEditor,
-  PlaceholderComponent: PlaceholderComponentEditor
+  CharacterComponent,
+  ItemComponent,
+  SkillComponent,
+  GraphComponent
 }
 
 const activeEditor = computed(() => {
