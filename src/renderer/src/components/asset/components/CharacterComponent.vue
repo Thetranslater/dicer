@@ -37,6 +37,12 @@ const emit = defineEmits<{
 }>()
 
 const genderOptions: readonly Gender[] = ['Unknown', 'Male', 'Female', 'Other'] as const
+const genderOptionItems: ReadonlyArray<{ value: Gender; label: string }> = [
+  { value: 'Unknown', label: '未知' },
+  { value: 'Male', label: '男' },
+  { value: 'Female', label: '女' },
+  { value: 'Other', label: '其他' }
+] as const
 
 const defaults: CharacterProps = {
   name: '',
@@ -195,67 +201,67 @@ function resetStats(): void {
   <div class="editor-shell">
     <div class="row">
       <label class="field">
-        <span class="label">Name</span>
+        <span class="label">姓名</span>
         <input class="input" :value="view.name" @change="onStringChange('name', $event)" />
       </label>
 
       <label class="field">
-        <span class="label">Gender</span>
+        <span class="label">性别</span>
         <select class="select" :value="view.gender" @change="onGenderChange">
-          <option v-for="gender in genderOptions" :key="gender" :value="gender">{{ gender }}</option>
+          <option v-for="item in genderOptionItems" :key="item.value" :value="item.value">{{ item.label }}</option>
         </select>
       </label>
     </div>
 
     <div class="row">
       <label class="field">
-        <span class="label">Race</span>
+        <span class="label">种族</span>
         <input class="input" :value="view.race" @change="onStringChange('race', $event)" />
       </label>
 
       <label class="field">
-        <RollableProperty label="AGE" :model-value="view.age" @update:model-value="onRollableChange('age', $event)" />
+        <RollableProperty label="年龄" :model-value="view.age" @update:model-value="onRollableChange('age', $event)" />
       </label>
     </div>
 
     <div class="stats-grid">
-      <RollableProperty label="MAG" :model-value="view.magic" @update:model-value="onRollableChange('magic', $event)" />
-      <RollableProperty label="STR" :model-value="view.strength"
+      <RollableProperty label="魔法" :model-value="view.magic" @update:model-value="onRollableChange('magic', $event)" />
+      <RollableProperty label="力量" :model-value="view.strength"
         @update:model-value="onRollableChange('strength', $event)" />
-      <RollableProperty label="SAN" :model-value="view.sanity" @update:model-value="onRollableChange('sanity', $event)" />
-      <RollableProperty label="INT" :model-value="view.intelligence"
+      <RollableProperty label="理智" :model-value="view.sanity" @update:model-value="onRollableChange('sanity', $event)" />
+      <RollableProperty label="智力" :model-value="view.intelligence"
         @update:model-value="onRollableChange('intelligence', $event)" />
-      <RollableProperty label="APP" :model-value="view.appearance"
+      <RollableProperty label="外貌" :model-value="view.appearance"
         @update:model-value="onRollableChange('appearance', $event)" />
-      <RollableProperty label="END" :model-value="view.endurance"
+      <RollableProperty label="耐力" :model-value="view.endurance"
         @update:model-value="onRollableChange('endurance', $event)" />
-      <RollableProperty label="LUK" :model-value="view.luck" @update:model-value="onRollableChange('luck', $event)" />
-      <RollableProperty label="HP" :model-value="view.hp" @update:model-value="onRollableChange('hp', $event)" />
-      <RollableProperty label="AGI" :model-value="view.agility"
+      <RollableProperty label="幸运" :model-value="view.luck" @update:model-value="onRollableChange('luck', $event)" />
+      <RollableProperty label="血量" :model-value="view.hp" @update:model-value="onRollableChange('hp', $event)" />
+      <RollableProperty label="敏捷" :model-value="view.agility"
         @update:model-value="onRollableChange('agility', $event)" />
-      <RollableProperty label="CRT" :model-value="view.critChance"
+      <RollableProperty label="暴击" :model-value="view.critChance"
         @update:model-value="onRollableChange('critChance', $event)" />
-      <RollableProperty label="CDMG" :model-value="view.critDamage"
+      <RollableProperty label="暴伤" :model-value="view.critDamage"
         @update:model-value="onRollableChange('critDamage', $event)" />
-      <RollableProperty label="CON" :model-value="view.constitution"
+      <RollableProperty label="体质" :model-value="view.constitution"
         @update:model-value="onRollableChange('constitution', $event)" />
-      <RollableProperty label="SIZ" :model-value="view.bodySize"
+      <RollableProperty label="体型" :model-value="view.bodySize"
         @update:model-value="onRollableChange('bodySize', $event)" />
-      <RollableProperty label="WIL" :model-value="view.willpower"
+      <RollableProperty label="意志" :model-value="view.willpower"
         @update:model-value="onRollableChange('willpower', $event)" />
-      <RollableProperty label="CHA" :model-value="view.charm" @update:model-value="onRollableChange('charm', $event)" />
-      <RollableProperty label="MON" :model-value="view.money" @update:model-value="onRollableChange('money', $event)" />
+      <RollableProperty label="魅力" :model-value="view.charm" @update:model-value="onRollableChange('charm', $event)" />
+      <RollableProperty label="金钱" :model-value="view.money" @update:model-value="onRollableChange('money', $event)" />
     </div>
 
     <div class="row">
       <label class="field full">
-        <span class="label">Description</span>
+        <span class="label">介绍</span>
         <textarea class="textarea" rows="3" :value="view.bio" @change="onStringChange('bio', $event)" />
       </label>
     </div>
 
     <div class="actions">
-      <button class="btn" type="button" @click="resetStats">Reset Stats</button>
+      <button class="btn" type="button" @click="resetStats">重置</button>
     </div>
   </div>
 </template>

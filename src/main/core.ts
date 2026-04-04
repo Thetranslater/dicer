@@ -3,6 +3,7 @@
 import { DPath } from './path'
 import { DRandom } from './random'
 import { DFS } from './fs'
+import { DAsset } from './asset'
 
 import { configManager } from './configManager'
 import { broadcast, windowManager } from './windowManager'
@@ -18,6 +19,7 @@ export function registerCoreIpcHandlers(): void {
   DPath.registerIPC()
   DRandom.resgisterIPC()
   DFS.registerIPC()
+  DAsset.registerIPC()
 
   ipcMain.handle('sys:deleteconfig', (_e, moduleName: string) => {
     const deleted = configManager.delete(moduleName)

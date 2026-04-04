@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, type Component as VueComponent } from 'vue'
 import CharacterComponent from './components/CharacterComponent.vue'
-import ItemComponent from './components/ItemComponent.vue'
 import SkillComponent from './components/SkillComponent.vue'
 import GraphComponent from './components/GraphComponent.vue'
+import CustomComponent from './components/CustomComponent.vue'
+import { getCComponent, type CustomComponentDefinition } from '../../utils/componentFactory'
 
 type ComponentNode = {
   id: string
@@ -19,16 +20,45 @@ const emit = defineEmits<{
   (e: 'change', value: Record<string, unknown>): void
 }>()
 
-const editorRegistry: Record<string, VueComponent> = {
+const presetRegistry: Record<string, VueComponent> = {
   CharacterComponent,
-  ItemComponent,
   SkillComponent,
   GraphComponent
 }
 
-const activeEditor = computed(() => {
+const isPresetType = computed(() => {
+  if (!props.componentData) return false
+  return Boolean(presetRegistry[props.componentData.type])
+})
+
+const resolvedCustomDefinition = computed<CustomComponentDefinition | null>(() => {
+  if (!props.componentData || isPresetType.value) return null
+  return (
+    getCComponent(props.componentData.type) ?? {
+      name: props.componentData.type,
+      properties: []
+    }
+  )
+})
+
+const activeRenderer = computed<VueComponent | null>(() => {
   if (!props.componentData) return null
-  return editorRegistry[props.componentData.type] ?? null
+  return presetRegistry[props.componentData.type] ?? CustomComponent
+})
+
+const activeRendererProps = computed<Record<string, unknown>>(() => {
+  if (!props.componentData) return {}
+
+  if (isPresetType.value) {
+    return {
+      modelValue: props.componentData.props
+    }
+  }
+
+  return {
+    modelValue: props.componentData.props,
+    definition: resolvedCustomDefinition.value
+  }
 })
 
 function onEditorChange(nextProps: Record<string, unknown>): void {
@@ -39,11 +69,12 @@ function onEditorChange(nextProps: Record<string, unknown>): void {
 <template>
   <section class="component-shell">
     <div v-if="componentData" class="component-body">
-      <component :is="activeEditor" v-if="activeEditor" :model-value="componentData.props" @change="onEditorChange" />
-
-      <div v-else class="unsupported">
-        Unsupported component type.
-      </div>
+      <component
+        v-if="activeRenderer"
+        :is="activeRenderer"
+        v-bind="activeRendererProps"
+        @change="onEditorChange"
+      />
     </div>
 
     <div v-else class="empty">No component data.</div>
@@ -64,15 +95,6 @@ function onEditorChange(nextProps: Record<string, unknown>): void {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.unsupported {
-  font-size: 12px;
-  color: #b42318;
-  background: #fffbfa;
-  border: 1px solid #fecdca;
-  border-radius: 6px;
-  padding: 8px;
 }
 
 .empty {

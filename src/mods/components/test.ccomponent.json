@@ -1,0 +1,11 @@
+{
+    "name" : "TestComponent",
+    "properties" : [
+        {"name" : "数值一", "type" : "Rollable"},
+        {"name" : "输入二", "type" : "Input"},
+        {"name" : "输入三", "type" : "TextArea"},
+        {"name" : "枚举一", "type" : "Enum", "value": ["d1", "d2", "d3"]},
+        {"name" : "选择一", "type" : "CheckBox"},
+        {"name" : "引用一", "type" : "EdgeArray"}
+    ]
+}

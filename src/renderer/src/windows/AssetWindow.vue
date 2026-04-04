@@ -3,6 +3,12 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type Compon
 import type { FSNode, OpenOption, SaveOption } from '../utils/fileService'
 import AssetCard from '../components/asset/Asset.vue'
 import ComponentView from '../components/asset/Component.vue'
+import {
+  makeComponent,
+  getCComponents,
+  hydrateComponentProps,
+  registerCComponent
+} from '../utils/componentFactory'
 
 type AssetExplorerItem = {
   name: string
@@ -64,14 +70,23 @@ const renameInputRef = ref<HTMLInputElement | null>(null)
 const renamingBusy = ref(false)
 const addComponentMenuRef = ref<HTMLElement | null>(null)
 const showAddComponentMenu = ref(false)
+const customComponentOptions = ref<Array<{ type: string; label: string }>>([])
 
-const addComponentOptions = [
+const presetComponentOptions = [
   { type: 'CharacterComponent', label: 'Character' },
-  { type: 'ItemComponent', label: 'Item' },
   { type: 'SkillComponent', label: 'Skill' },
   { type: 'GraphComponent', label: 'Graph' }
 ] as const
-type AddComponentType = (typeof addComponentOptions)[number]['type']
+const addComponentOptions = computed(() => {
+  if (customComponentOptions.value.length === 0) {
+    return [...presetComponentOptions]
+  }
+  return [
+    ...presetComponentOptions,
+    { type: '__divider__', label: '', divider: true },
+    ...customComponentOptions.value
+  ]
+})
 
 const hasAssetsRoot = computed(() => Boolean(assetsRootPath.value))
 const hasSelectedAsset = computed(() => Boolean(selectedAsset.value && selectedAssetPath.value))
@@ -194,7 +209,8 @@ function normalizeComponentNode(raw: unknown, _index: number): AssetComponentNod
 
   const id = createRuntimeComponentId()
   const type = typeof raw.type === 'string' && raw.type.trim().length > 0 ? raw.type : 'PlaceholderComponent'
-  const props = isRecord(raw.props) ? raw.props : {}
+  const rawProps = isRecord(raw.props) ? raw.props : {}
+  const props = hydrateComponentProps(type, rawProps)
 
   return { id, type, props }
 }
@@ -346,12 +362,28 @@ async function initialize(): Promise<void> {
     assetsRootPath.value = resolvedRoot
     currentPath.value = resolvedRoot
 
+    loadCComponents()
     await window.api.fs.mkdir(assetsRootPath.value)
     await loadAssets(resolvedRoot)
   } catch (error) {
     console.error('[AssetWindow] initialize failed', toErrorMessage(error))
   } finally {
     loading.value = false
+  }
+}
+
+async function loadCComponents(): Promise<void> {
+  try {
+    const children = await window.api.asset.loadccomponent()
+    registerCComponent(children)
+
+    customComponentOptions.value = getCComponents().map((item) => ({
+      type: item.name,
+      label: item.name
+    }))
+  } catch (error) {
+    console.error('[AssetWindow] loadCustomComponents failed', toErrorMessage(error))
+    customComponentOptions.value = []
   }
 }
 
@@ -707,10 +739,11 @@ async function addComponentByType(type: string): Promise<void> {
   if (!selectedAsset.value) return
 
   const id = createRuntimeComponentId()
+  const created = makeComponent(type)
   selectedAsset.value.components.push({
     id,
-    type,
-    props: {}
+    type: type,
+    props: created.props
   })
 
   const saved = await saveSelectedAssetDocument()
@@ -722,8 +755,9 @@ async function addComponentByType(type: string): Promise<void> {
   }
 }
 
-async function onAddComponentMenuSelect(type: AddComponentType): Promise<void> {
+async function onAddComponentMenuSelect(type: string): Promise<void> {
   showAddComponentMenu.value = false
+  if (type === '__divider__') return
   await addComponentByType(type)
 }
 
@@ -785,12 +819,12 @@ onBeforeUnmount(() => {
     <div class="pane pane-top" :style="{ height: `${topPaneHeight}px` }">
       <div class="toolbar">
         <div class="toolbar-left">
-          <button @click="loadAssets()" :disabled="loading || !hasAssetsRoot">Refresh</button>
-          <button @click="createFolder" :disabled="loading || !hasAssetsRoot">New Folder</button>
-          <button @click="createAsset" :disabled="loading || !hasAssetsRoot">New Asset</button>
+          <button @click="loadAssets()" :disabled="loading || !hasAssetsRoot">刷新</button>
+          <button @click="createFolder" :disabled="loading || !hasAssetsRoot">新建文件夹</button>
+          <button @click="createAsset" :disabled="loading || !hasAssetsRoot">新建资产</button>
         </div>
         <div class="toolbar-right">
-          <input v-model="searchKeyword" class="search-input" type="text" placeholder="Search assets..."
+          <input v-model="searchKeyword" class="search-input" type="text" placeholder="搜索..."
             :disabled="loading || !hasAssetsRoot" />
         </div>
       </div>
@@ -800,7 +834,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-else-if="visibleItems.length === 0" class="empty">
-        No assets found.
+        无资产
       </div>
 
       <div v-else class="asset-grid">
@@ -828,31 +862,30 @@ onBeforeUnmount(() => {
 
     <div class="pane pane-bottom">
       <div class="inspector-head">
-        <div class="inspector-title">Inspector</div>
+        <div class="inspector-title">组件栏</div>
         <div class="inspector-actions">
           <div ref="addComponentMenuRef" class="add-component-menu">
-            <button class="add-component-trigger" :disabled="loading || !hasSelectedAsset" @click="()=> showAddComponentMenu = !showAddComponentMenu">
+            <button class="add-component-trigger" :disabled="loading || !hasSelectedAsset"
+              @click="() => showAddComponentMenu = !showAddComponentMenu">
               +
             </button>
 
             <div v-if="showAddComponentMenu" class="add-component-dropdown">
-              <button
-                v-for="option in addComponentOptions"
-                :key="option.type"
-                class="add-component-item"
-                :disabled="loading"
-                @click="void onAddComponentMenuSelect(option.type)"
-              >
-                Add {{ option.label }}
-              </button>
+              <template v-for="option in addComponentOptions" :key="option.type">
+                <div v-if="'divider' in option && option.divider" class="add-component-divider"></div>
+                <button v-else class="add-component-item" :disabled="loading"
+                  @click="void onAddComponentMenuSelect(option.type)">
+                  {{ option.label }}
+                </button>
+              </template>
             </div>
           </div>
-          <button @click="removeActiveComponent" :disabled="loading || !activeComponentId">Remove Component</button>
+          <button @click="removeActiveComponent" :disabled="loading || !activeComponentId">移除</button>
         </div>
       </div>
 
       <div v-if="!selectedAsset" class="empty">
-        Select an asset file to inspect its components.
+        请选择资产
       </div>
 
       <div v-else class="inspector-tree">
@@ -870,7 +903,7 @@ onBeforeUnmount(() => {
         </div>
 
         <div v-if="selectedAsset.components.length === 0" class="component-empty">
-          This asset has no components.
+          无组件
         </div>
       </div>
     </div>
@@ -1074,6 +1107,12 @@ onBeforeUnmount(() => {
 
 .add-component-dropdown .add-component-item:hover {
   background: #f6f8fa;
+}
+
+.add-component-divider {
+  height: 1px;
+  margin: 2px 0;
+  background: #eef2f7;
 }
 
 .inspector-tree {

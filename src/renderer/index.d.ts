@@ -45,6 +45,9 @@ export interface IAPI {
     mv: (source, target, option?) => any
     rnm: (target, next, option?) => any
   }
+  asset: {
+    loadccomponent: () => Promise<FSNode[]>
+  }
   path: {
     normalize: (path) => any
     parent: (path) => any

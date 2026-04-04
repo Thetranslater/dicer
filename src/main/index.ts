@@ -120,7 +120,7 @@ app.whenReady().then(() => {
       label: 'File',
       submenu: [
         {
-          label: 'New...',
+          label: '新建...',
           click: () => {
             const option: SaveOption = {
               dialogfilters: [{ name: 'HTML', extensions: ['html', 'htm'] }, { name: 'JSON', extensions: ['json'] }]
@@ -142,7 +142,7 @@ app.whenReady().then(() => {
           }
         },
         {
-          label: 'Open...',
+          label: '打开...',
           click: async () => {
             try {
               const option: OpenOption = {
@@ -166,11 +166,11 @@ app.whenReady().then(() => {
         },
         { type: 'separator' },
         {
-          label: 'Save',
+          label: '保存',
           click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-save')
         },
         {
-          label: 'Save As...',
+          label: '另存为...',
           click: () => windowManager.get('editor')?.webContents.send('BUS_CHANNEL', 'menu-saveas')
         },
         { type: 'separator' },
@@ -178,10 +178,10 @@ app.whenReady().then(() => {
       ]
     },
     {
-      label: 'Images',
+      label: '图像管理',
       submenu: [
         {
-          label: 'Open Images Manager',
+          label: '打开图像管理器',
           click: () => {
             windowManager.createWindow('images')
           }
@@ -189,10 +189,10 @@ app.whenReady().then(() => {
       ]
     },
     {
-      label: 'Asset',
+      label: '资产管理',
       submenu: [
         {
-          label: 'Open Asset Window',
+          label: '打开资产管理器',
           click: () => {
             windowManager.createWindow('assets')
           }
@@ -200,10 +200,10 @@ app.whenReady().then(() => {
       ]
     },
     {
-      label: 'Settings',
+      label: '设置',
       submenu: [
         {
-          label: 'Open Settings Window',
+          label: '打开设置窗口',
           click: () => {
             windowManager.createWindow('settings')
           }

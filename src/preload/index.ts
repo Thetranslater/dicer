@@ -51,6 +51,9 @@ const api = {
     rm: (paths: string[], option?) => ipcRenderer.invoke('fs:rm', paths, option),
     rnm: (target: string, next: string, option?) => ipcRenderer.invoke('fs:rnm', target, next, option)
   },
+  asset: {
+    loadccomponent: () => ipcRenderer.invoke('asset:loadccomponent')
+  },
   path: {
     /**
     * 规范化一个路径，比如将D:\folder\..转成D:/

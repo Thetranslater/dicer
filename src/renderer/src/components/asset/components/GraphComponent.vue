@@ -134,9 +134,9 @@ function onEdgeChange(index: number, edge: EdgeModel): void {
 .btn {
   width: 24px;
   height: 22px;
-  border: 1px solid #d0d7de;
+  border: none;
   border-radius: 4px;
-  background: #fff;
+  background: transparent;
   cursor: pointer;
   padding: 0;
 }
