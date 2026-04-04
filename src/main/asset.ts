@@ -8,8 +8,8 @@ import type { FSNode, OpenOption } from '../renderer/src/utils/fileService'
 const CCOMPONENT_FILE_RE = /\.ccomponent\.json$/i
 
 function getComponentDirPath(): string {
-  //return join(process.resourcesPath, 'mods', 'components')
-  return "D:/Programs/projects/dicer/dicer/src/mods/components"
+  return join(process.resourcesPath, 'mods', 'components')
+  //return "D:/Programs/projects/dicer/dicer/src/mods/components"
 }
 
 function resolveComponentDir(): string | null {
