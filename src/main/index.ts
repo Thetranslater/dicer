@@ -1,5 +1,5 @@
-﻿import { app, BrowserWindow, ipcMain, protocol } from 'electron'
-import { updateElectronApp } from 'update-electron-app'
+﻿import { app, BrowserWindow, ipcMain, protocol, dialog } from 'electron'
+import electronUpdater from 'electron-updater'
 import { electronApp, optimizer } from '@electron-toolkit/utils'
 // import { net } from 'electron'
 // import { URL } from 'url'
@@ -33,7 +33,29 @@ function registerLocalProtocol(): void {
   })
 }
 
-updateElectronApp()
+function setupAutoUpdate() {
+  const { autoUpdater } = electronUpdater;
+
+  autoUpdater.autoDownload = true
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('error', (e) => console.error('[updater] error', e))
+  autoUpdater.on('checking-for-update', () => console.log('[updater] checking'))
+  autoUpdater.on('update-available', (info) => console.log('[updater] available', info.version))
+  autoUpdater.on('update-not-available', () => console.log('[updater] not available'))
+  autoUpdater.on('download-progress', (p) => console.log('[updater] progress', p.percent))
+  autoUpdater.on('update-downloaded', async () => {
+    const { response } = await dialog.showMessageBox({
+      type: 'info',
+      buttons: ['重启更新', '稍后'],
+      defaultId: 0,
+      message: '新版本已下载，是否重启安装？'
+    })
+    if (response === 0) autoUpdater.quitAndInstall()
+  })
+
+  autoUpdater.checkForUpdates()
+}
 
 // 娴嬭瘯涓婁紶鍥剧墖
 // function testUploadImage(): void {
@@ -107,6 +129,7 @@ protocol.registerSchemesAsPrivileged([
 // Some APIs can only be used after this event occurs.
 app.whenReady().then(() => {
 
+  setupAutoUpdate()
   // 娉ㄥ唽鏈湴鏂囦欢鍗忚
   registerLocalProtocol()
 
@@ -117,7 +140,7 @@ app.whenReady().then(() => {
   //Menu template
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: 'File',
+      label: '文件',
       submenu: [
         {
           label: '新建...',

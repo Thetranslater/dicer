@@ -43,5 +43,8 @@ appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
 publish:
-  provider: generic
-  url: https://github.com/Thetranslater/dicer/releases
+  provider: github
+  owner: Thetranslater
+  repo: dicer
+  releaseType: release
+  private: false
